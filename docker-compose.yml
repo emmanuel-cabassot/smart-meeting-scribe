@@ -1,0 +1,18 @@
+services:
+  backend-python:
+    build: ./backend-python
+    container_name: smart-meeting-scribe
+    ports:
+      - "5000:8000"  # <--- On mappe le 5000 (PC) vers le 8000 (Conteneur)
+    # On demande explicitement l'accès au matériel GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      # Pour le dév : si tu modifies main.py, le conteneur le voit
+      - ./backend-python:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload

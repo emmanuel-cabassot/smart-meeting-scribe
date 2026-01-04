@@ -13,6 +13,17 @@ services:
               count: 1
               capabilities: [gpu]
     volumes:
-      # Pour le dév : si tu modifies main.py, le conteneur le voit
+      # --- LE TUNNEL (Bind Mount) ---
+      # 1. "./backend-python" : Le dossier sur TON ordinateur (Windows).
+      # 2. ":/app" : Le dossier DANS le conteneur (Linux).
+      # Ce n'est pas une copie unique : c'est une fenêtre ouverte.
+      # Tout fichier modifié sur ton PC est INSTANTANÉMENT modifié dans le conteneur.
       - ./backend-python:/app
+
+    # --- LE SURVEILLANT (Override) ---
+    # Cette ligne remplace le "CMD" du Dockerfile.
+    # On ajoute surtout l'option "--reload" ici.
+    # "--reload" : Dit à Uvicorn de surveiller le dossier /app.
+    # Dès qu'un fichier change (grâce au volume au-dessus), le serveur redémarre tout seul en 1 seconde.
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    

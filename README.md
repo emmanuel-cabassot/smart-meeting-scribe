@@ -75,6 +75,3 @@ Si le port 5000 est occupé sur votre machine, modifiez le fichier docker-compos
 ports:
   - "NOUVEAU_PORT:8000"
 ```
-
-
-

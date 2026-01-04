@@ -28,8 +28,14 @@ COPY requirements.txt .
 # --no-cache-dir réduit la taille de l'image finale
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 6. On copie le code
-COPY main.py .
+# 6. COPIE DU CODE SOURCE
+# On copie tout le contenu du dossier courant (sauf ce qui est dans .dockerignore)
+COPY . .
 
 # 7. Lancement
+# CMD : La commande exécutée au démarrage du conteneur.
+# ["uvicorn"] : Le serveur web qui va faire l'interface entre le web et Python.
+# ["main:app"] : Cherche le fichier 'main.py' et dedans l'objet 'app = FastAPI()'.
+# ["--host", "0.0.0.0"] : INDISPENSABLE. Dit au conteneur d'accepter les connexions venant de l'extérieur (ton PC).
+# ["--port", "8000"] : Le port interne sur lequel le conteneur écoute (celui qu'on a mappé dans docker-compose).
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

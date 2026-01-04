@@ -27,8 +27,5 @@ python-multipart==0.0.9
 # 🧠 INTELLIGENCE ARTIFICIELLE (Le Coeur)
 # ==========================================
 
-# 4. Le Modèle de Transcription (L'Oreille)
-# La librairie officielle d'OpenAI pour charger les modèles (base, small, turbo...)
-# et transformer l'audio en texte.
-# Doc : https://github.com/openai/whisper
-openai-whisper
+
+faster-whisper==1.2.1

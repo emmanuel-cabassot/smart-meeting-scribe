@@ -1,77 +1,134 @@
-# 🧠 AI-Stack-Starter : Base Architecture for Local AI
+# 🎙️ Smart Meeting Scribe : GPU-Accelerated Diarization & Transcription
 
-![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
-![NVIDIA](https://img.shields.io/badge/nVIDIA-%2376B900.svg?style=for-the-badge&logo=nvidia&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=for-the-badge&logo=PyTorch&logoColor=white)
+Smart Meeting Scribe est une API locale haute performance capable de transcrire des fichiers audio/vidéo tout en identifiant qui parle et quand (Diarisation).
 
-Ce dépôt est un **modèle d'architecture (Template)** pour développer des applications d'Intelligence Artificielle professionnelles en local (On-Premise).
-
-Il met en œuvre une politique **"Clean Host"** : toute la stack IA est isolée dans des conteneurs Docker, avec un accès direct au GPU via le NVIDIA Container Toolkit.
+L'application combine la puissance de Faster-Whisper (Large-v3) pour le texte et de Pyannote Audio 3.1 pour l'analyse des locuteurs, le tout orchestré par un algorithme de fusion intelligent.
 
 ## 🏗️ Architecture Technique
 
-* **Philosophie :** "Clean Host" (Aucune pollution de la machine hôte, tout est isolé dans Docker).
-* **Hôte requis :** Linux (Ubuntu recommandé) + Drivers NVIDIA uniquement.
-* **Virtualisation :** Docker + Docker Compose.
-* **Backend IA :** Python 3.10+, FastAPI.
-* **Accélération :** CUDA 12.6 + PyTorch (Optimisé pour RTX 30xx/40xx).
+Le projet suit une philosophie "Clean Host" : l'intégralité de la stack (FFmpeg, Python, CUDA Libraries) tourne dans un conteneur isolé. Votre machine hôte reste propre.
 
-### Structure des dossiers
+### Le Pipeline Hybride
+
+```mermaid
+graph LR
+A[Fichier Audio/Vidéo] --> B(Conversion FFmpeg 16kHz)
+B --> C{Traitement Parallèle}
+C --> D[🕵️ Diarisation Pyannote]
+C --> E[✍️ Transcription Whisper]
+D --> F[🧩 Algorithme de Fusion]
+E --> F
+F --> G[💾 JSON & Archives]
+```
+
+- **Hôte requis** : Linux (Ubuntu recommandé) + Drivers NVIDIA.
+- **Conteneur** : CUDA 12.4.1 (Image officielle NVIDIA).
+- **Backend** : Python 3.10, FastAPI.
+- **IA** : PyTorch 2.x, calculs optimisés (INT8/FLOAT16 + TF32).
+
+## 📂 Structure du projet
+
+```bash
 .
-├── docker-compose.yml       # Orchestration des services et du GPU
+├── docker-compose.yml       # Orchestration & Gestion GPU
+├── .env                     # Tokens secrets (Hugging Face)
 ├── README.md                # Documentation
+├── ARCHITECTURE.md          # Détails techniques du pipeline
 └── backend-python/          # Microservice IA
-    ├── Dockerfile           # Définition de l'environnement (System layer)
-    ├── requirements.txt     # Dépendances Python (App layer)
-    └── main.py              # Point d'entrée de l'API
+    ├── Dockerfile           # Environnement (CUDA 12.4, FFmpeg)
+    ├── requirements.txt     # Librairies (Whisper, Pyannote...)
+    ├── main.py              # Logique API & Fusion
+    └── recordings/          # 📂 Dossier monté : Archives des analyses
+```
 
 ## 📋 Pré-requis (Sur la machine hôte)
-- Drivers NVIDIA installés et fonctionnels (nvidia-smi doit renvoyer un résultat).
 
-- Docker Engine & Docker Compose.
-
-- NVIDIA Container Toolkit configuré.
+- **NVIDIA Drivers** : Installés sur l'hôte (`nvidia-smi` doit fonctionner).
+- **Docker & Docker Compose** : Installés.
+- **NVIDIA Container Toolkit** : Configuré pour que Docker puisse voir le GPU.
+- **Compte Hugging Face** : Indispensable pour télécharger le modèle Pyannote 3.1.
+  - Accepter les conditions d'utilisation sur [cette page](https://huggingface.co/pyannote/speaker-diarization-3.1).
+  - Créer un Access Token (Read).
 
 ## 🚀 Installation & Démarrage
-1. Cloner le projet
 
-2. Lancer la stack
+### 1. Cloner le projet
+
+```bash
+git clone <votre-repo>
+cd smart-meeting-scribe
+```
+
+### 2. Configuration du Token
+
+Créez un fichier `.env` à la racine pour y mettre votre token Hugging Face :
+
+```bash
+# Crée le fichier .env
+echo "HF_TOKEN=votre_token_hugging_face_ici" > .env
+```
+
+### 3. Lancer la Stack
+
+Docker va construire l'image, télécharger les dépendances et démarrer le serveur.
+
 ```bash
 docker compose up -d --build
 ```
 
-3. Vérifier l'accès GPU
-```bash
-# Via le terminal
-curl http://localhost:5000/gpu-check
+Le premier lancement peut prendre quelques minutes (téléchargement des modèles IA).
 
-# Ou via le navigateur
-# http://localhost:5000/gpu-check
+### 4. Vérification
+
+Vérifiez les logs pour confirmer que le GPU, Whisper et Pyannote sont chargés :
+
+```bash
+docker compose logs -f backend-python
 ```
 
+Vous devez voir : `✅ Pipeline chargé !` et `🚀 GPU Détecté.` (Ctrl+C pour quitter les logs)
 
-Réponse attendue :
+## 🖥️ Utilisation
+
+L'API expose une interface Swagger UI pour tester facilement.
+
+1. Ouvrez votre navigateur sur : [http://localhost:5000/docs](http://localhost:5000/docs)
+2. Allez sur la route `POST /transcribe`.
+3. Chargez un fichier audio ou vidéo (mp3, wav, m4a, mp4...).
+4. Cliquez sur **Execute**.
+
+### Format de Sortie (JSON)
+
+L'API retourne (et sauvegarde dans `backend-python/recordings/`) un résultat structuré :
+
 ```json
 {
-    "cuda_available": true,
-    "device_count": 1,
-    "current_device": "NVIDIA GeForce RTX 4090",
-    "cuda_version_torch": "12.6.1",
-    "driver_version": "535.124.06"
+  "metadata": {
+    "filename": "meeting_marketing.m4a",
+    "duration": 45.2,
+    "saved_at": "recordings/20240104_1530_meeting"
+  },
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "text": "Bonjour à tous, commençons.",
+      "speaker": "SPEAKER_00"
+    },
+    {
+      "start": 2.8,
+      "end": 5.1,
+      "text": "Merci d'être présents pour ce point budget.",
+      "speaker": "SPEAKER_01"
+    }
+  ]
 }
-``` 
-
-## 🔧 Personnalisation
-
-### Ajouter une librairie Python
-Ajouter la ligne dans backend-python/requirements.txt.
-
-Relancer avec docker compose up -d --build.
-
-### Changer de port
-Si le port 5000 est occupé sur votre machine, modifiez le fichier docker-compose.yml :
-```yaml
-ports:
-  - "NOUVEAU_PORT:8000"
 ```
+
+## �️ Dépannage Courant
+
+- **Erreur Permission Denied sur `recordings/`** : Assurez-vous que votre utilisateur Linux a les droits d'écriture sur le dossier ou lancez Docker avec les bonnes permissions UID/GID.
+
+- **Erreur Pyannote (401/403)** : Vérifiez que votre `HF_TOKEN` est valide dans le `.env` et que vous avez bien accepté les conditions sur le site Hugging Face.
+
+- **Mémoire GPU insuffisante** : Whisper Large-v3 + Pyannote nécessitent environ 6 à 8 Go de VRAM. Si vous avez moins, modifiez `main.py` pour utiliser Whisper `medium` ou `small`.

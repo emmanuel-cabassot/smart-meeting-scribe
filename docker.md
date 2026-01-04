@@ -6,12 +6,12 @@ backend-python
 ## 🟢 Démarrer (ou Mettre à jour)
 Construit l'image et lance tous les services en arrière-plan.
 
-docker compose up -d
+docker compose up -d --build
 
 ## 🟡 Arrêter
 Arrête tous les services.
 
-docker compose down backend-python
+docker compose down --rmi local   
 
 ## 🟣 Voir les logs
 docker compose logs -f backend-python
@@ -26,7 +26,7 @@ docker system prune -f
 docker compose up -d --build
 
 ## 🟨 Executer ligne de commande dans le conteneur backend-python
-docker exec -it backend-python /bin/bash
+docker exec -it smart-meeting-scribe /bin/bash
 
 ## 🟥 Voir les images
 docker images

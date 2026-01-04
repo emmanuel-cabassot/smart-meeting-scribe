@@ -1,41 +1,30 @@
-# 1. On part de l'image Runtime NVIDIA (Note le 12.6.3) pour la trouver aller sur docker hub et choisir la version qui vous correspond https://hub.docker.com/r/nvidia/cuda/tags
-FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
+# 1. Image de base (CUDA 12.4 = Stable)
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-# 2. Variables d'environnement pour Python
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# 3. Installation des dépendances système
-# ffmpeg est ajouté en prévision de l'audio, curl pour la santé du conteneur
+# 2. Outils système
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ffmpeg \
-    curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Installation de PyTorch (Optimisé pour CUDA 12.6)
-# On force l'index-url pour ne pas télécharger la version CPU par défaut aller voir sur le site de PyTorch pour trouver le bon index-url : https://pytorch.org/get-started/locally/
-RUN pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-
-# 5. DÉPENDANCES PYTHON 
-# Crée le dossier /app et se place dedans (équivalent à mkdir + cd mais dans notre conteneur Docker)
+# 3. Dossier de travail
 WORKDIR /app
-# On copie d'abord les requirements pour optimiser le cache Docker
+
+# 4. Installation des dépendances
 COPY requirements.txt .
-# --no-cache-dir réduit la taille de l'image finale
+RUN pip3 install --upgrade pip
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 6. COPIE DU CODE SOURCE
-# On copie tout le contenu du dossier courant (sauf ce qui est dans .dockerignore)
+# --- 🛠️ LA SOLUTION "EN DUR" 🛠️ ---
+# On sait que c'est Python 3.10. On écrit le chemin directement.
+# On pointe vers les dossiers où pip a installé les drivers NVIDIA.
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:$LD_LIBRARY_PATH
+# -----------------------------------
+
+# 5. Copie du code
 COPY . .
 
-# 7. Lancement
-# CMD : La commande exécutée au démarrage du conteneur.
-# ["uvicorn"] : Le serveur web qui va faire l'interface entre le web et Python.
-# ["main:app"] : Cherche le fichier 'main.py' et dedans l'objet 'app = FastAPI()'.
-# ["--host", "0.0.0.0"] : INDISPENSABLE. Dit au conteneur d'accepter les connexions venant de l'extérieur (ton PC).
-# ["--port", "8000"] : Le port interne sur lequel le conteneur écoute (celui qu'on a mappé dans docker-compose).
+# 6. Lancement direct (Plus de script intermédiaire)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

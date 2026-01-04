@@ -1,34 +1,13 @@
-# ==========================================
-# 🏗️ INFRASTRUCTURE WEB (Le Serveur)
-# ==========================================
+# On pointe vers CUDA 12.4
+--extra-index-url https://download.pytorch.org/whl/cu124
 
-# 1. Le Framework (Le Cerveau)
-# Sert à créer les routes API (@app.get, @app.post) et générer la doc automatique.
-# Doc : https://fastapi.tiangolo.com/
+torch
+torchvision
+torchaudio
 fastapi==0.128.0
-
-# 2. Le Serveur ASGI (Le Moteur)
-# C'est le logiciel qui écoute sur le port 8000 et transmet les requêtes à FastAPI.
-# Sans lui, FastAPI n'est qu'un code inerte.
-# Doc : https://www.uvicorn.org/
 uvicorn==0.40.0
-
-# ==========================================
-# 🛠️ UTILITAIRES (Les Outils)
-# ==========================================
-
-# 3. Gestion des Fichiers (Le Facteur)
-# Indispensable pour que FastAPI accepte l'upload de fichiers (Format "multipart/form-data").
-# Sans ça, l'upload de ton fichier .m4a planterait immédiatement.
-# Doc : https://github.com/Kludex/python-multipart
 python-multipart==0.0.9
-
-# ==========================================
-# 🧠 INTELLIGENCE ARTIFICIELLE (Le Coeur)
-# ==========================================
-
-# 4. Le Modèle de Transcription (L'Oreille)
-# La librairie officielle d'OpenAI pour charger les modèles (base, small, turbo...)
-# et transformer l'audio en texte.
-# Doc : https://github.com/openai/whisper
-openai-whisper
+faster-whisper==1.1.0
+pyannote.audio
+numpy
+scipy

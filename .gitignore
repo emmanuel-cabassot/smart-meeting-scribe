@@ -1,11 +1,37 @@
+# --- Python & Environnements ---
 __pycache__
 *.pyc
-.env
-.venv
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- IDE & Système ---
 .idea/
 .vscode/
 *.swp
-# Ignore les fichiers audio de test
+.DS_Store
+
+# --- Sécurité ---
+.env
+
+# --- Fichiers Temporaires du Script ---
+# On ignore les fichiers créés pendant le traitement (temp_...)
+temp_*
+*_converted.wav
+
+# --- Données Lourdes / Tests ---
+# On ne veut pas versionner tes vidéos de test
 *.mp3
 *.wav
+*.m4a
+*.mp4
+*.mkv
+
+# --- RÉSULTATS (Diarisation/Transcription) ---
+# On ignore le dossier où sont sauvegardés les JSON
+recordings/

@@ -1,109 +1,118 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-import whisper
-import torch
 import shutil
-import os
+import time
+import traceback
 
-app = FastAPI(title="Smart Meeting Scribe")
+# Import des fonctions de gestion mémoire
+from core.models import release_models
+from services.audio import convert_to_wav, cleanup_files
+from services.diarization import run_diarization
+from services.transcription import run_transcription
+from services.identification import get_voice_bank_embeddings, identify_speaker # <--- NOUVEAU
+from services.fusion import merge_transcription_diarization
+from services.storage import save_results
 
-# Variable globale pour savoir quel modèle est réellement chargé
-LOADED_MODEL_NAME = "Inconnu"
-
-# --- 1. CONFIGURATION MATÉRIELLE (Au démarrage) ---
-print("⏳ Initialisation du système...")
-
-# On vérifie si la RTX est bien là
-if torch.cuda.is_available():
-    DEVICE = "cuda"
-    GPU_NAME = torch.cuda.get_device_name(0)
-    print(f"🚀 GPU Détecté : {GPU_NAME}")
-else:
-    DEVICE = "cpu"
-    print("⚠️ GPU non détecté, passage en mode CPU (Lent).")
-
-# --- 2. CHARGEMENT DU MODÈLE (Une seule fois !) ---
-# On charge le modèle au niveau global pour qu'il reste en mémoire RAM/VRAM
-try:
-    print(f"⏳ Tentative de chargement du modèle Whisper TURBO sur {DEVICE}...")
-    model = whisper.load_model("turbo", device=DEVICE)
-    LOADED_MODEL_NAME = "turbo"
-    print("✅ Modèle TURBO chargé et prêt !")
-
-except Exception as e:
-    print(f"⚠️ Le modèle 'turbo' n'a pas pu être chargé (Erreur: {e})")
-    print("🔄 Bascule automatique sur le modèle 'medium' (Valeur sûre)...")
-    
-    try:
-        # Fallback : Medium est un excellent compromis pour une RTX 30xx/40xx
-        model = whisper.load_model("medium", device=DEVICE)
-        LOADED_MODEL_NAME = "medium"
-        print("✅ Modèle MEDIUM chargé (Mode de secours activé) !")
-    except Exception as e2:
-        print(f"❌ Erreur critique : Impossible de charger un modèle. {e2}")
-        raise e2
-
-
-# --- 3. LES ROUTES API ---
-
-@app.get("/")
-def read_root():
-    """Route de santé pour vérifier que l'API tourne"""
-    return {
-        "status": "Smart Meeting Scribe Ready", 
-        "device": DEVICE,
-        "model_loaded": LOADED_MODEL_NAME
-    }
-
-@app.get("/gpu-check")
-def check_gpu():
-    """Vérifie l'état de la carte graphique et de la mémoire"""
-    try:
-        gpu_stats = {
-            "available": torch.cuda.is_available(),
-            "device_count": torch.cuda.device_count(),
-            "current_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
-            "active_model": LOADED_MODEL_NAME
-        }
-        return gpu_stats
-    except Exception as e:
-        return {"error": str(e)}
+app = FastAPI(title="Smart Meeting Scribe (Full Stack IA - Identification)")
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    """
-    Endpoint principal : Reçoit un fichier audio -> Renvoie le texte.
-    """
-    
-    # 1. Sauvegarde temporaire du fichier reçu
-    # On nettoie le nom de fichier pour éviter les bugs d'accents/espaces
     clean_name = "".join(x for x in file.filename if x.isalnum() or x in "._-")
     temp_filename = f"temp_{clean_name}"
+    wav_filename = None 
+    start_time = time.time()
     
     try:
+        # 0. SETUP
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        print(f"🎙️  Traitement de : {clean_name}")
         
-        # 2. Transcription
-        print(f"🎙️ Traitement de {file.filename} avec le modèle {LOADED_MODEL_NAME}...")
+        # 1. Conversion Audio
+        print("   -> Conversion WAV...")
+        wav_filename = convert_to_wav(temp_filename)
         
-        # L'appel magique à Whisper
-        # Tu peux ajouter initial_prompt="Compte rendu de réunion" pour aider l'IA
-        result = model.transcribe(temp_filename)
+        # ═══════════════════════════════════════════════════════════
+        # 2. DIARISATION
+        # ═══════════════════════════════════════════════════════════
+        print("📥 [1/4] Diarisation...")
+        annotation = run_diarization(wav_filename)
+        release_models() # On libère la VRAM après Pyannote
         
-        print("✅ Transcription terminée.")
+        # ═══════════════════════════════════════════════════════════
+        # 3. IDENTIFICATION VOCALE (Le nouveau "cerveau")
+        # ═══════════════════════════════════════════════════════════
+        print("🔍 [2/4] Identification des locuteurs...")
+        
+        # A. Charger la banque de voix (crée les embeddings Homme/Femme)
+        bank_embeddings = get_voice_bank_embeddings()
+        
+        # B. Mapper chaque SPEAKER trouvé à un nom de la banque
+        speaker_mapping = {}
+        if bank_embeddings:
+            # On récupère la liste des labels uniques (SPEAKER_00, etc.)
+            detected_labels = annotation.labels()
+            for label in detected_labels:
+                # Pour l'instant on simplifie : on récupère l'embedding du premier segment du speaker
+                # (Une version plus poussée extrairait le segment le plus long)
+                # On utilise le modèle d'identification ici
+                from pyannote.audio import Inference
+                from core.models import load_embedding_model
+                from pyannote.core import Segment
+                
+                emb_model = load_embedding_model()
+                
+                # On prend le premier segment assez long (> 2s) pour identifier
+                track_segment = None
+                for segment, _, l in annotation.itertracks(yield_label=True):
+                    if l == label and segment.duration > 2.0:
+                        track_segment = segment
+                        break
+                
+                if track_segment:
+                    unknown_emb = emb_model.crop(wav_filename, track_segment)
+                    name, score = identify_speaker(unknown_emb, bank_embeddings)
+                    speaker_mapping[label] = name
+                    print(f"      ✨ {label} identifié comme : {name} (Score: {score:.2f})")
+                else:
+                    speaker_mapping[label] = label
+        
+        release_models() # On libère la VRAM après WeSpeaker
+        
+        # ═══════════════════════════════════════════════════════════
+        # 4. TRANSCRIPTION
+        # ═══════════════════════════════════════════════════════════
+        print("✍️ [3/4] Transcription Whisper...")
+        segments = run_transcription(wav_filename)
+        release_models() # On libère la VRAM après Whisper
+        
+        # ═══════════════════════════════════════════════════════════
+        # 5. FUSION & SAUVEGARDE
+        # ═══════════════════════════════════════════════════════════
+        print("🧩 [4/4] Fusion & Archivage...")
+        
+        # On fusionne texte et speakers
+        final_result = merge_transcription_diarization(segments, annotation)
+        
+        # On remplace les SPEAKER_XX par les vrais noms trouvés
+        for item in final_result:
+            if item["speaker"] in speaker_mapping:
+                item["speaker"] = speaker_mapping[item["speaker"]]
+        
+        save_path = save_results(clean_name, annotation, segments, final_result)
+        
+        duration = time.time() - start_time
+        print(f"✅ Terminé en {duration:.2f}s.")
         
         return {
-            "filename": file.filename,
-            "language_detected": result["language"],
-            "text": result["text"].strip()
+            "metadata": {"filename": file.filename, "duration": duration, "saved_at": save_path},
+            "segments": final_result
         }
 
     except Exception as e:
-        print(f"❌ Erreur pendant la transcription : {e}")
+        print(f"❌ Erreur : {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        # 3. Nettoyage (Toujours supprimer le fichier temp, même si ça plante)
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
-            print(f"🧹 Fichier temporaire supprimé.")
+        cleanup_files(temp_filename, wav_filename)
+        release_models()

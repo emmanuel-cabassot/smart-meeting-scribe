@@ -4,9 +4,10 @@ import time
 import traceback
 
 # On importe les fonctions de gestion mémoire
-from core.models import load_whisper, release_models
+from core.models import release_models
 from services.audio import convert_to_wav, cleanup_files
 from services.diarization import run_diarization
+from services.transcription import run_transcription
 from services.fusion import merge_transcription_diarization
 from services.storage import save_results
 
@@ -43,10 +44,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         # 3. TRANSCRIPTION (Charge -> Traite -> Vide)
         # ═══════════════════════════════════════════════════════════
         print("✍️ [2/3] Transcription...")
-        # On charge Whisper manuellement ici
-        whisper = load_whisper()
-        segments, info = whisper.transcribe(wav_filename, beam_size=5)
-        segments = list(segments)  # Conversion générateur -> liste
+        segments = run_transcription(wav_filename)
         
         # 🛑 NETTOYAGE VRAM (On vire Whisper)
         release_models()

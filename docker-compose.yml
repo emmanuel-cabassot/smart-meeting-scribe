@@ -1,29 +1,56 @@
 services:
   backend-python:
-    build: ./backend-python
+    # --- CONSTRUCTION DE L'IMAGE ---
+    # On dit à Docker où trouver le Dockerfile pour construire ce service
+    build: 
+      context: ./backend-python
+      dockerfile: Dockerfile
+    
+    # Le petit nom du conteneur pour le trouver facilement avec "docker ps"
     container_name: smart-meeting-scribe
+
+    # --- LE RÉSEAU (Les Portes) ---
     ports:
-      - "5000:8000"  # <--- On mappe le 5000 (PC) vers le 8000 (Conteneur)
-    # On demande explicitement l'accès au matériel GPU
+      # "PORT_PC : PORT_CONTENEUR"
+      # On tape sur localhost:5000 -> ça arrive sur le 8000 du conteneur (Uvicorn)
+      - "5000:8000"
+
+    # --- LES PERMISSIONS MATÉRIELLES (GPU) ---
+    # Cette section est CRITIQUE. Sans elle, le conteneur ne voit pas la RTX 4070 Ti.
+    # Docker fait un "Pass-through" du driver NVIDIA de Windows vers Linux.
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+              count: 1             # Utilise 1 GPU (le premier disponible)
+              capabilities: [gpu]  # Active les capacités de calcul CUDA
+
+    # --- LES DONNÉES (Volumes) ---
     volumes:
-      # --- LE TUNNEL (Bind Mount) ---
-      # 1. "./backend-python" : Le dossier sur TON ordinateur (Windows).
-      # 2. ":/app" : Le dossier DANS le conteneur (Linux).
-      # Ce n'est pas une copie unique : c'est une fenêtre ouverte.
-      # Tout fichier modifié sur ton PC est INSTANTANÉMENT modifié dans le conteneur.
+      # 1. LE TUNNEL DE DÉVELOPPEMENT (Bind Mount)
+      # "./backend-python" (Windows) <-> "/app" (Linux)
+      # C'est une fenêtre ouverte : toute modif de code sur Windows est vue instantanément par Linux.
       - ./backend-python:/app
 
-    # --- LE SURVEILLANT (Override) ---
-    # Cette ligne remplace le "CMD" du Dockerfile.
-    # On ajoute surtout l'option "--reload" ici.
-    # "--reload" : Dit à Uvicorn de surveiller le dossier /app.
-    # Dès qu'un fichier change (grâce au volume au-dessus), le serveur redémarre tout seul en 1 seconde.
+      # 2. LE COFFRE-FORT DES MODÈLES (Named Volume)
+      # On crée un stockage persistant pour les modèles Hugging Face (Pyannote).
+      # Sans ça, à chaque redémarrage, il retélécharge 2 Go de modèles (long et inutile).
+      - hf_cache:/root/.cache/huggingface
+
+    # --- LES CLÉS SECRÈTES (Environment) ---
+    # On récupère la valeur depuis le fichier .env
+    # La syntaxe ${NOM_VARIABLE} dit à Docker de chercher la variable.
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+
+    # --- LE DÉMARRAGE (Command) ---
+    # Cette ligne écrase le "CMD" du Dockerfile pour le mode DEV.
+    # "--reload" : Le serveur redémarre tout seul si tu modifies un fichier Python (grâce au volume 1).
+    # "--host 0.0.0.0" : Ouvre la porte pour que ton PC (Port 5000) puisse entrer.
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    
+
+# --- DÉCLARATION DES VOLUMES PERSISTANTS ---
+# Obligatoire pour que le volume "hf_cache" utilisé plus haut existe réellement.
+volumes:
+  hf_cache:

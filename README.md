@@ -51,19 +51,50 @@ L'IA calculera automatiquement une empreinte mathématique (Embedding) pour chaq
 ├── docker-compose.yml       
 ├── .env                     # Token Hugging Face
 └── backend-python/          
-    ├── main.py              # Orchestrateur (FastAPI)
-    ├── core/                
-    │   ├── config.py        # Paramètres GPU
-    │   └── models.py        # Gestionnaire de VRAM (Load/Unload)
-    ├── services/            
-    │   ├── audio.py         # FFmpeg
-    │   ├── diarization.py   # Pyannote
-    │   ├── identification.py # 🆕 Reconnaissance (WeSpeaker + Cosine Similarity)
-    │   ├── transcription.py # Whisper
-    │   └── fusion.py        # Mapping Texte <-> Noms
-    ├── voice_bank/          # 🆕 Dossier des voix de référence (.wav)
-    └── recordings/          # Résultats (JSON)
+    ├── main.py              # Point d'entrée (~25 lignes)
+    ├── ARCHITECTURE.md      # Documentation technique
+    ├── api/                 # 🆕 Couche Transport (HTTP)
+    │   └── v1/
+    │       ├── router.py    # Hub central des routes
+    │       └── endpoints/
+    │           ├── transcribe.py   # POST /api/v1/process/
+    │           └── voice_bank.py   # GET /api/v1/voice-bank/
+    ├── services/            # Couche Métier (IA)
+    │   ├── audio.py         # FFmpeg - Conversion
+    │   ├── diarization.py   # Pyannote - "Qui parle quand?"
+    │   ├── identification.py # WeSpeaker - "C'est qui?"
+    │   ├── transcription.py # Whisper - "Qu'est-ce qui est dit?"
+    │   ├── fusion.py        # Alignement Texte + Noms
+    │   └── storage.py       # Sauvegarde JSON
+    ├── core/                # Couche Infrastructure
+    │   ├── config.py        # Paramètres (GPU, tokens)
+    │   └── models.py        # Gestionnaire VRAM (Load/Unload)
+    ├── voice_bank/          # Voix de référence (.wav)
+    └── recordings/          # Résultats archivés (JSON)
 ```
+
+## 🌐 API Endpoints
+
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| GET | `/` | Health check + statut GPU |
+| POST | `/api/v1/process/` | Transcription audio complète |
+| GET | `/api/v1/voice-bank/` | Liste des voix enregistrées |
+
+### Exemple d'utilisation
+
+```bash
+# Health check
+curl http://localhost:5000/
+
+# Transcription d'un fichier audio
+curl -X POST "http://localhost:5000/api/v1/process/" -F "file=@reunion.mp3"
+
+# Lister les voix enregistrées
+curl http://localhost:5000/api/v1/voice-bank/
+```
+
+📖 Documentation Swagger : http://localhost:5000/docs
 
 ## 🚀 Installation & Démarrage
 

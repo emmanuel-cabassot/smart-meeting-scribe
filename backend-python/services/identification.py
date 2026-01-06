@@ -48,12 +48,12 @@ def identify_speaker(unknown_emb, bank_embeddings, threshold=0.5):
         threshold: Seuil de confiance minimum (0.0 à 1.0)
     
     Returns:
-        tuple: (nom du locuteur ou "Inconnu", score de similarité)
+        tuple: (nom du locuteur ou None si non reconnu, score de similarité)
     """
     if not bank_embeddings:
-        return "Inconnu", 0.0
+        return None, 0.0
     
-    best_match = "Inconnu"
+    best_match = None
     best_score = 0.0
     
     for name, known_emb in bank_embeddings.items():
@@ -74,4 +74,4 @@ def identify_speaker(unknown_emb, bank_embeddings, threshold=0.5):
     if best_score > threshold:
         return best_match, best_score
     else:
-        return "Inconnu", best_score
+        return None, best_score

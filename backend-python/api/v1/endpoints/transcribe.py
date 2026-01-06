@@ -79,8 +79,10 @@ async def transcribe_audio(file: UploadFile = File(...)):
                 if track_segment:
                     unknown_emb = emb_model.crop(wav_filename, track_segment)
                     name, score = identify_speaker(unknown_emb, bank_embeddings)
-                    speaker_mapping[label] = name
+                    # Si identification réussie, on utilise le nom, sinon on garde le label par défaut
+                    speaker_mapping[label] = name if name else label
                 else:
+                    # Pas de segment assez long → on garde le label par défaut (SPEAKER_XX)
                     speaker_mapping[label] = label
         release_models()
         

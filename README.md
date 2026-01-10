@@ -8,18 +8,18 @@ L'application repose sur une architecture modulaire de type **Clean Architecture
 
 ```mermaid
 graph TD
-    Client[Client Frontend / API] --> Traefik[Traefik (Reverse Proxy)]
-    Traefik --> API[app/main.py (FastAPI)]
+    Client["Client Frontend / API"] --> Traefik["Traefik - Reverse Proxy"]
+    Traefik --> API["app/main.py - FastAPI"]
     
     subgraph Backend Python
-        API --> Router[app/api/v1/router.py]
-        Router --> Endpoints[Endpoints: /transcribe, /voice-bank]
-        Endpoints --> Services[app/services/ (Logique Métier)]
-        Services --> Core[app/core/ (Infra & Modèles)]
+        API --> Router["app/api/v1/router.py"]
+        Router --> Endpoints["Endpoints: /transcribe, /voice-bank"]
+        Endpoints --> Services["app/services/ - Logique Métier"]
+        Services --> Core["app/core/ - Infra & Modèles"]
     end
     
-    Services --> Storage[(Système de Fichiers)]
-    Core --> GPU[(NVIDIA GPU)]
+    Services --> Storage[("Système de Fichiers")]
+    Core --> GPU[("NVIDIA GPU")]
 ```
 
 ## 🔄 Pipeline de Traitement Audio

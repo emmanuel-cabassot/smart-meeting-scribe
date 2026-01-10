@@ -2,7 +2,7 @@ from faster_whisper import WhisperModel
 from pyannote.audio import Pipeline, Model, Inference
 import torch
 import gc
-from core.config import DEVICE, COMPUTE_TYPE
+from app.core.config import DEVICE, COMPUTE_TYPE, HF_TOKEN
 
 # Variables globales
 current_whisper = None
@@ -10,7 +10,6 @@ current_pipeline = None
 current_embedding = None
 
 def load_whisper():
-    """Charge Whisper uniquement s'il n'est pas déjà là."""
     global current_whisper
     if current_whisper is None:
         print("   📥 Chargement Whisper en VRAM...")
@@ -23,25 +22,28 @@ def load_pyannote():
     if current_pipeline is None:
         print("   📥 Chargement Pyannote en VRAM...")
         
-        # --- PATCH SECURITE ROBUSTE ---
+        # Patch sécurité
         original_load = torch.load
         def robust_load(*args, **kwargs):
-            # On force weights_only à False, peu importe si déjà présent ou non
             kwargs["weights_only"] = False
             return original_load(*args, **kwargs)
-        
         torch.load = robust_load
         
         try:
-            current_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+            # --- CORRECTION : use_auth_token -> token ---
+            current_pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1", 
+                token=HF_TOKEN
+            )
+            # --------------------------------------------
             current_pipeline.to(torch.device(DEVICE))
         finally:
-            torch.load = original_load # Restauration
+            torch.load = original_load 
             
     return current_pipeline
 
 def load_embedding_model():
-    """Charge WeSpeaker avec le même patch robuste."""
+    """Charge WeSpeaker."""
     global current_embedding
     if current_embedding is None:
         print("   📥 Chargement du modèle d'identification (WeSpeaker)...")
@@ -50,11 +52,15 @@ def load_embedding_model():
         def robust_load(*args, **kwargs):
             kwargs["weights_only"] = False
             return original_load(*args, **kwargs)
-        
         torch.load = robust_load
         
         try:
-            model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM")
+            # --- CORRECTION : use_auth_token -> token ---
+            model = Model.from_pretrained(
+                "pyannote/wespeaker-voxceleb-resnet34-LM", 
+                token=HF_TOKEN
+            )
+            # --------------------------------------------
             current_embedding = Inference(model, window="whole")
             current_embedding.to(torch.device(DEVICE))
         finally:
@@ -84,5 +90,3 @@ def release_models():
         torch.cuda.ipc_collect()
     
     print("   🧹 VRAM Nettoyée (Modèles déchargés).")
-
-print("⚙️ Mode VRAM Économique activé (chargement à la demande)")

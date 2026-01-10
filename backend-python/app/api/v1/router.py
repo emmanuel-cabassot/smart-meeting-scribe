@@ -24,7 +24,7 @@ from fastapi import APIRouter
 # Chaque module (transcribe, voice_bank) expose un objet `router` de type APIRouter
 # On les importe ici pour les "brancher" sur notre router principal
 # ══════════════════════════════════════════════════════════════════════════════
-from api.v1.endpoints import transcribe, voice_bank
+from app.api.v1.endpoints import transcribe, voice_bank
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CRÉATION DU ROUTER PRINCIPAL V1

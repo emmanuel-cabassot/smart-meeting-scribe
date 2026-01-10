@@ -16,19 +16,19 @@ import traceback
 # ══════════════════════════════════════════════════════════════════════════════
 # IMPORTS INTERNES - On importe nos services métier
 # ══════════════════════════════════════════════════════════════════════════════
-from core.models import release_models           # Libération mémoire GPU
-from services.audio import convert_to_wav, cleanup_files  # Conversion audio
-from services.diarization import run_diarization          # "Qui parle quand?"
-from services.transcription import run_transcription      # "Qu'est-ce qui est dit?"
-from services.identification import get_voice_bank_embeddings, identify_speaker  # "C'est qui?"
-from services.fusion import merge_transcription_diarization  # Combine le tout
-from services.storage import save_results                    # Sauvegarde JSON
+from app.core.models import release_models           # Libération mémoire GPU
+from app.services.audio import convert_to_wav, cleanup_files  # Conversion audio
+from app.services.diarization import run_diarization          # "Qui parle quand?"
+from app.services.transcription import run_transcription      # "Qu'est-ce qui est dit?"
+from app.services.identification import get_voice_bank_embeddings, identify_speaker  # "C'est qui?"
+from app.services.fusion import merge_transcription_diarization  # Combine le tout
+from app.services.storage import save_results                    # Sauvegarde JSON
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CRÉATION DU ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 # Ce router sera importé par api/v1/router.py avec la ligne :
-#   from api.v1.endpoints import transcribe
+#   from app.api.v1.endpoints import transcribe
 #   api_router.include_router(transcribe.router, prefix="/process")
 #
 # Résultat : la route @router.post("/") ci-dessous devient POST /api/v1/process/
@@ -71,7 +71,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             # (Le code d'identification que nous avons validé...)
             detected_labels = annotation.labels()
             from pyannote.audio import Inference
-            from core.models import load_embedding_model
+            from app.core.models import load_embedding_model
             emb_model = load_embedding_model()
             
             for label in detected_labels:

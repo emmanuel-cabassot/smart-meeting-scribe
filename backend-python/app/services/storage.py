@@ -8,7 +8,13 @@ def save_results(clean_name, annotation, raw_segments, fusion_segments):
     # 1. Création dossier
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     folder_name = f"{timestamp}_{clean_name.split('.')[0]}"
-    save_dir = os.path.join("recordings", folder_name)
+    
+    # --- 🛠️ FIX DOCKER : CHEMIN ABSOLU ---
+    # On force le chemin vers le volume monté dans /code/recordings
+    # Cela évite les erreurs si le script est exécuté depuis /code/app
+    save_dir = os.path.join("/code/recordings", folder_name)
+    # -------------------------------------
+    
     os.makedirs(save_dir, exist_ok=True)
     
     # 2. Préparation Diarisation

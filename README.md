@@ -1,5 +1,11 @@
 # Architecture Technique - Smart Meeting Scribe
 
+> ⚠️ **WORK IN PROGRESS (WIP)**
+> Ce projet est actuellement en phase de **construction active**. L'architecture et les endpoints peuvent évoluer.
+> *Version actuelle : v0.1.0-alpha*
+
+---
+
 ## 🎯 Introduction & Contexte
 
 **Smart Meeting Scribe** est une plateforme d'analyse de réunions **100% On-Premise** (hébergement local). Elle permet de transformer automatiquement des enregistrements audio en comptes-rendus structurés et identifiés, sans jamais envoyer de données vers le Cloud (contrairement aux solutions comme Teams, Zoom AI ou Otter.ai).

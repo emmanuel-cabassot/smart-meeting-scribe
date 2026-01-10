@@ -1,5 +1,22 @@
 # Architecture Technique - Smart Meeting Scribe
 
+## 🎯 Introduction & Contexte
+
+**Smart Meeting Scribe** est une plateforme d'analyse de réunions **100% On-Premise** (hébergement local). Elle permet de transformer automatiquement des enregistrements audio en comptes-rendus structurés et identifiés, sans jamais envoyer de données vers le Cloud (contrairement aux solutions comme Teams, Zoom AI ou Otter.ai).
+
+### Objectifs du projet
+1.  **Confidentialité Absolue** : Tout le traitement (IA) se fait localement sur le serveur de l'entreprise. Aucune donnée vocale ne sort du réseau.
+2.  **Identification Intelligente** : Le système ne se contente pas de transcrire ; il reconnaît *qui* parle grâce à une banque de voix locale (Voice Bank).
+3.  **Performance & Sobriété** : Optimisé pour tourner sur du matériel Grand Public (GPU type RTX 4070 Ti) grâce une gestion dynamique de la mémoire (VRAM).
+
+### Fonctionnalités Clés
+* 🎙️ **Transcription Haute Fidélité** (via Whisper Large v3).
+* 👥 **Diarisation** : Séparation précise des différents interlocuteurs.
+* 🆔 **Identification Biométrique** : Reconnaissance des participants connus.
+* 💾 **Sortie Structurée** : Génération de fichiers JSON exploitables par le Frontend.
+
+---
+
 ## 📚 Vue d'ensemble
 
 L'application repose sur une architecture modulaire de type **Clean Architecture**, conçue pour être déployée via **Docker**. Le code applicatif est isolé dans le module `app/`, séparant clairement la logique métier, l'API et l'infrastructure.

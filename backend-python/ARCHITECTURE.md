@@ -1,186 +1,194 @@
-# Architecture Backend - Smart Meeting Scribe
+# 🏗️ Architecture Technique : Smart Meeting Scribe V3.1
 
-## Vue d'ensemble
+> **Version** : 3.1 (Stack "Safe & Lean")
+>
+> **Approche** : "Clean Host", "AI Native" & "Cloud Ready"
+>
+> **Cible** : Déploiement On-Premise (Docker) sur GPU unique (Consumer Grade - ex: RTX 4070)
 
-L'architecture suit le pattern **Clean Architecture** avec 3 couches distinctes :
+Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de performance GPU validée par l'audit 2026.
 
+---
+
+## 1. Vue d'Ensemble & Philosophie
+
+Le passage à la V3.1 corrige les défauts de maintenance des files d'attente historiques et prépare le système à la scalabilité sans complexité inutile au démarrage.
+
+### Les 3 Piliers de l'Architecture
+
+| Pilier | Description |
+|--------|-------------|
+| **Découplage "Async-Native"** | L'API délègue le travail via une stack asynchrone moderne (Taskiq) qui partage l'injection de dépendances avec FastAPI. Plus de "hacks" pour faire parler le Web et le Worker. |
+| **Stockage Abstrait (fsspec)** | Plutôt que de lier le code à un disque dur ou à AWS S3, nous utilisons une abstraction. Le code lit `protocol://file.wav`. Aujourd'hui c'est le disque NVMe (Rapide), demain c'est MinIO/S3 (Scalable), sans changer une ligne de code. |
+| **Sécurité GPU "Defensive"** | Le système utilise le mode **Spawn strict** et le **Recyclage des Workers** pour contrer les fuites de mémoire et les instabilités des drivers CUDA. |
+
+---
+
+## 2. La Stack Technologique (Détail)
+
+### 🌐 Couche Infrastructure & Réseau
+
+| Composant | Rôle |
+|-----------|------|
+| **Docker Compose** | Orchestrateur unique. Tout le système démarre avec une seule commande. |
+| **Traefik** (Reverse Proxy) | Porte d'entrée unique (Port 80). Route le trafic et gérera le SSL. |
+
+### ⚡ Couche Application (Backend)
+
+| Composant | Rôle | Performance |
+|-----------|------|-------------|
+| **FastAPI** (Python) | Guichetier. Reçoit le fichier, utilise `fsspec` pour le stocker, et pousse la tâche dans Redis. | Temps de réponse < 200ms |
+| **Taskiq** (Orchestrateur) | Remplaçant validé d'ARQ/Celery. Intégration native avec FastAPI, typage strict, et support robuste des middlewares. | — |
+
+> [!TIP]
+> **Pourquoi Taskiq ?**
+> ARQ est en maintenance et Celery gère mal l'async. Taskiq est le standard moderne pour FastAPI, permettant de partager la connexion DB et la configuration entre l'API et le Worker.
+
+### 🧠 Couche Intelligence (Worker IA)
+
+Le "Cerveau" du système. Isolé dans son propre processus (Spawn Mode).
+
+| Modèle | Fonction | Notes |
+|--------|----------|-------|
+| **Faster-Whisper** | Transcription audio → texte | Engine CTranslate2 (4x plus rapide que OpenAI) |
+| **Pyannote Audio 3.1** | Diarisation ("Qui parle quand ?") | Exécuté sur GPU avec gestion stricte de la mémoire |
+| **WeSpeaker** | Identification biométrique | Comparaison vectorielle |
+
+### 💾 Couche Données & Stockage
+
+| Composant | Rôle |
+|-----------|------|
+| **Redis 7** (Alpine) | Broker & Backend : Gère la file d'attente Taskiq et stocke les résultats temporaires. |
+| **PostgreSQL 15** | Mémoire à long terme (Utilisateurs, Métadonnées, Indexation). |
+| **fsspec** (Abstraction) | **Couche Logique** : Interface unique pour les fichiers.<br>• **Phase 1** (Actuelle) : Backend `LocalFileSystem` (Performance NVMe).<br>• **Phase 2** (Future) : Backend `S3FileSystem` (MinIO). |
+
+---
+
+## 3. Flux de Données (Workflow)
+
+Voici le trajet exact d'une réunion avec la nouvelle abstraction.
+
+```mermaid
+sequenceDiagram
+    participant User as 👤 Utilisateur
+    participant API as ⚡ FastAPI
+    participant Redis as 🔴 Redis
+    participant Worker as 🧠 Worker Taskiq
+    participant FS as 📂 fsspec (Disque)
+    participant DB as 🐘 PostgreSQL
+
+    User->>API: POST reunion.mp3
+    API->>FS: Sauvegarde (via LocalFileSystem)
+    API->>Redis: Enqueue task "process_audio"
+    API-->>User: 202 Accepted - Task ID
+    
+    Note over Redis: Tâche en attente...
+    
+    Worker->>Redis: Récupère la tâche
+    Worker->>FS: Lecture fichier (Abstraction)
+    
+    Note over Worker: 🛡️ Démarrage Processus (Spawn)
+    Note over Worker: Phase 1: Conversion & Diarisation
+    Note over Worker: Phase 2: Transcription & Identification
+    Note over Worker: 🧹 Nettoyage VRAM (Garbage Collect)
+    
+    Worker->>FS: Écrit result.json
+    Worker->>DB: Sauvegarde Métadonnées
+    Worker->>Redis: Task Success
+    
+    opt Recyclage
+        Note over Worker: ♻️ Restart Process (Memoire Purge)
+    end
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        main.py                              │
-│                   (Point d'entrée FastAPI)                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    api/ (Couche Transport)                  │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                   v1/router.py                       │   │
-│  │              (Hub central des routes)                │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                    │                    │                   │
-│                    ▼                    ▼                   │
-│  ┌──────────────────────┐  ┌──────────────────────┐        │
-│  │ endpoints/transcribe │  │ endpoints/voice_bank │        │
-│  │   POST /process/     │  │  GET /voice-bank/    │        │
-│  └──────────────────────┘  └──────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 services/ (Couche Métier)                   │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐              │
-│  │   audio    │ │ diarization│ │transcription│              │
-│  │ conversion │ │  Pyannote  │ │   Whisper   │              │
-│  └────────────┘ └────────────┘ └────────────┘              │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐              │
-│  │identification│ │   fusion   │ │  storage   │              │
-│  │  WeSpeaker  │ │ merge data │ │ save JSON  │              │
-│  └────────────┘ └────────────┘ └────────────┘              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  core/ (Couche Infrastructure)              │
-│  ┌──────────────────────┐  ┌──────────────────────┐        │
-│  │      config.py       │  │      models.py       │        │
-│  │  (Variables d'env)   │  │ (Chargement modèles) │        │
-│  └──────────────────────┘  └──────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+
+### Étapes Clés V3.1
+
+1. **Ingestion (FastAPI + fsspec)**
+   - FastAPI reçoit le stream.
+   - Il écrit via `fsspec` (agnostique du support physique).
+   - Il envoie le message à Redis via le broker Taskiq.
+
+2. **Traitement (Worker Taskiq)**
+   - Le Worker récupère le message.
+   - **Sécurité** : Il lance le traitement dans un contexte isolé.
+   - Il exécute le pipeline IA (Whisper/Pyannote).
+
+3. **Finalisation & Recyclage**
+   - Les résultats sont sauvegardés.
+   - **Auto-Nettoyage** : Après N tâches (ex: 50), le processus worker redémarre automatiquement pour garantir qu'aucune fuite de mémoire CUDA ne persiste.
+
+---
+
+## 4. Stratégie de Gestion GPU (VRAM)
+
+> [!CAUTION]
+> Point critique validé par l'audit.
+
+### Protocole de Sécurité CUDA
+
+| Règle | Implémentation V3.1 |
+|-------|---------------------|
+| **Spawn Context** | Utilisation forcée de `multiprocessing.set_start_method('spawn')`. Empêche les crashs liés au fork des drivers NVIDIA. |
+| **Concurrency = 1** | `max_async_tasks=1`. Une seule réunion à la fois par GPU. |
+| **Worker Recycling** | Le worker se suicide et renaît périodiquement pour vider la fragmentation mémoire. |
+| **Imports Explicites** | Pas d'auto-découverte "magique" des tâches (source de bugs avec le recyclage). Tout est importé explicitement. |
+
+---
+
+## 5. Évolutions Futures (Ready)
+
+L'architecture V3.1 prépare le terrain pour la scalabilité sans dette technique.
+
+### 🔮 Roadmap Technique
+
+| Feature | Impact V3.1 |
+|---------|-------------|
+| **Passage Cluster** | Grâce à `fsspec`, basculer sur MinIO (S3) se fait en changeant 1 variable d'environnement (`STORAGE_PROTOCOL=s3`). Le code ne change pas. |
+| **RAG (Vector Search)** | L'intégration de Qdrant est triviale car Taskiq peut facilement lancer des sous-tâches d'embedding (BGE-M3) après la transcription. |
+| **Frontend Realtime** | Redis est déjà configuré pour le Pub/Sub. On pourra streamer la progression (SSE) directement au Frontend Next.js. |
+
+---
+
+## 📊 Diagramme d'Architecture Globale
+
+```mermaid
+graph TB
+    subgraph Client
+        User["👤 Utilisateur"]
+    end
+    
+    subgraph Docker Host
+        Traefik["🔀 Traefik"]
+        
+        subgraph App Layer
+            API["⚡ FastAPI"]
+            Worker["🧠 Worker Taskiq"]
+        end
+        
+        subgraph Data Layer
+            Redis[("🔴 Redis 7")]
+            Postgres[("🐘 PostgreSQL")]
+        end
+        
+        subgraph Storage Layer
+            FS["📂 Système de Fichiers<br>(Abstraction fsspec)"]
+        end
+    end
+    
+    User --> Traefik
+    Traefik --> API
+    
+    API -- "Push Task" --> Redis
+    API -- "Write" --> FS
+    
+    Worker -- "Pull Task" --> Redis
+    Worker -- "Read" --> FS
+    Worker -- "Store Meta" --> Postgres
+    
+    style Worker fill:#f96,stroke:#333,stroke-width:2px
+    style FS fill:#69f,stroke:#333,stroke-dasharray: 5 5
 ```
 
 ---
 
-## Flux de données : Transcription audio
-
-```
-Fichier Audio (.mp3, .m4a, etc.)
-         │
-         ▼
-┌─────────────────────┐
-│  POST /api/v1/process/  │  ◄── api/v1/endpoints/transcribe.py
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│ 1. services/audio   │  Conversion → WAV mono 16kHz
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│ 2. services/        │  "Qui parle quand ?"
-│    diarization      │  → SPEAKER_00, SPEAKER_01...
-└─────────────────────┘
-         │ release_models() ← Libère VRAM
-         ▼
-┌─────────────────────┐
-│ 3. services/        │  Associe SPEAKER_XX → "Emmanuel"
-│    identification   │  via embeddings voice_bank/
-└─────────────────────┘
-         │ release_models()
-         ▼
-┌─────────────────────┐
-│ 4. services/        │  "Qu'est-ce qui est dit ?"
-│    transcription    │  → Texte avec timestamps
-└─────────────────────┘
-         │ release_models()
-         ▼
-┌─────────────────────┐
-│ 5. services/fusion  │  Combine texte + speakers
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│ 6. services/storage │  Sauvegarde JSON dans recordings/
-└─────────────────────┘
-         │
-         ▼
-    { JSON Response }
-```
-
----
-
-## Description des fichiers
-
-### `main.py`
-**Rôle** : Point d'entrée de l'application FastAPI.
-- Instancie l'app avec métadonnées (titre, version)
-- Monte le router API v1 sur `/api/v1`
-- Route santé `/` pour vérifier GPU
-
-### `api/v1/router.py`
-**Rôle** : Hub centralisant tous les endpoints.
-- Importe et branche `transcribe.router` et `voice_bank.router`
-- Définit les préfixes (`/process`, `/voice-bank`)
-- Configure les tags Swagger
-
-### `api/v1/endpoints/transcribe.py`
-**Rôle** : Endpoint principal de traitement audio.
-- Reçoit fichier via `UploadFile`
-- Orchestre le pipeline : audio → diarisation → identification → transcription → fusion
-- Gère la libération VRAM entre chaque étape
-
-### `api/v1/endpoints/voice_bank.py`
-**Rôle** : Gestion de la banque de voix.
-- Liste les voix enregistrées dans `voice_bank/`
-
-### `services/audio.py`
-**Rôle** : Conversion et nettoyage fichiers.
-- `convert_to_wav()` : FFmpeg → WAV mono 16kHz
-- `cleanup_files()` : Supprime fichiers temporaires
-
-### `services/diarization.py`
-**Rôle** : Segmentation par locuteur.
-- Utilise Pyannote 3.1
-- Retourne une `Annotation` (qui parle quand)
-
-### `services/transcription.py`
-**Rôle** : Transcription speech-to-text.
-- Utilise Whisper (medium)
-- Retourne segments avec timestamps
-
-### `services/identification.py`
-**Rôle** : Reconnaissance vocale.
-- `get_voice_bank_embeddings()` : Charge embeddings depuis `voice_bank/`
-- `identify_speaker()` : Compare via similarité cosinus
-
-### `services/fusion.py`
-**Rôle** : Fusion diarisation + transcription.
-- Associe chaque segment de texte au locuteur correspondant
-
-### `services/storage.py`
-**Rôle** : Persistence des résultats.
-- Sauvegarde JSON dans `recordings/`
-
-### `core/models.py`
-**Rôle** : Gestionnaire de modèles IA.
-- Chargement lazy (à la demande)
-- `release_models()` : Libère VRAM (GPU)
-
-### `core/config.py`
-**Rôle** : Configuration centralisée.
-- Token HuggingFace, chemins, etc.
-
----
-
-## Routes API
-
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| GET | `/` | Health check + info GPU |
-| POST | `/api/v1/process/` | Transcription audio complète |
-| GET | `/api/v1/voice-bank/` | Liste des voix enregistrées |
-
----
-
-## Gestion VRAM (Optimisation GPU)
-
-Le pipeline charge/décharge les modèles séquentiellement pour éviter les OOM :
-
-```
-Pyannote (1.5 GB) → release → WeSpeaker (0.5 GB) → release → Whisper (3 GB) → release
-```
-
-Chaque appel à `release_models()` :
-1. Supprime les références aux modèles
-2. Appelle `torch.cuda.empty_cache()`
-3. Force le garbage collector
+*Document mis à jour le 10 janvier 2026 - Validation Audit V3.1*

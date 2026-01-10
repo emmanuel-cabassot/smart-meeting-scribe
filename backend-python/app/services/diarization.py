@@ -1,4 +1,4 @@
-from core.models import load_pyannote  # On importe la fonction, pas le modèle
+from app.core.models import load_pyannote  # On importe la fonction, pas le modèle
 
 def get_diarization_object(diarization_result):
     """Extrait l'objet annotation propre depuis le wrapper Pyannote."""

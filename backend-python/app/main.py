@@ -19,7 +19,7 @@ Architecture :
 """
 
 from fastapi import FastAPI
-from api.v1.router import api_router  # Import du router hub qui contient tous les endpoints
+from app.api.v1.router import api_router  # Import du router hub qui contient tous les endpoints
 import torch  # Pour vérifier la disponibilité GPU
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -28,7 +28,7 @@ import os
 router = APIRouter()
 
 # Chemin vers le dossier contenant les échantillons vocaux
-VOICE_BANK_PATH = "voice_bank"
+VOICE_BANK_PATH = "/code/voice_bank"
 
 
 @router.get("/")

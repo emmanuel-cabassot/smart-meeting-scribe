@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Dossier de travail
-WORKDIR /app
+WORKDIR /code
 
 # 4. Installation des dépendances
 COPY requirements.txt .
@@ -23,8 +23,9 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:$LD_LIBRARY_PATH
 # -----------------------------------
 
-# 5. Copie du code
-COPY . .
+# 5. Copie du code (on copie le dossier app)
+COPY app ./app
 
-# 6. Lancement direct (Plus de script intermédiaire)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 6. Lancement (on pointe vers app.main:app)
+# On lance uvicorn sur le port 8000 interne
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

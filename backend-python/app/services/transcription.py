@@ -1,4 +1,4 @@
-from core.models import load_whisper
+from app.core.models import load_whisper
 
 
 def run_transcription(wav_path: str) -> list:

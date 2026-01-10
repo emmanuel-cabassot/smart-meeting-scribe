@@ -5,11 +5,10 @@ Compare les segments audio avec une banque de voix pré-enregistrées.
 import os
 import numpy as np
 from scipy.spatial.distance import cdist
-from core.models import load_embedding_model
+from app.core.models import load_embedding_model
 
-# Chemin vers le dossier contenant les fichiers .wav de référence
-VOICE_BANK_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "voice_bank")
-
+import os
+VOICE_BANK_PATH = "/code/voice_bank"
 
 def get_voice_bank_embeddings():
     """Scan le dossier voice_bank et génère les signatures vocales."""

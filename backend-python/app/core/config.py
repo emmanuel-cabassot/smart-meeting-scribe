@@ -1,8 +1,14 @@
 import torch
+import os
 
 # 🚀 BOOST PERFORMANCE RTX 4000 (TF32)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
+
+# --- NOUVEAU : Récupération du Token ---
+# Si la variable n'existe pas, on met None, mais le modèle plantera plus tard si c'est le cas
+HF_TOKEN = os.getenv("HF_TOKEN")
+# ---------------------------------------
 
 def get_device_config():
     if torch.cuda.is_available():

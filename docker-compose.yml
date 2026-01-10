@@ -1,38 +1,72 @@
 services:
-  # --- 1. Reverse Proxy (Traefik) ---
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  # --- 2. Backend IA ---
-  backend-python:
+  # ============================================================================
+  # 1. LE PASSE-PLAT (BROKER REDIS)
+  # Rôle : Stocke les messages entre l'API et le Worker.
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sms_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ============================================================================
+  # 2. LE GUICHET (API GATEWAY)
+  # Rôle : Reçoit les fichiers et les envoie au Worker via Redis.
+  # ⚠️ Pas de GPU ici. Port 5000 (car 8000 pris par Portainer).
+  # ============================================================================
+  api:
     build: 
       context: ./backend-python
-    container_name: smart-meeting-scribe
-    restart: unless-stopped
-    env_file:
-      - .env
-
+    container_name: sms_api
+    
+    # On force le port 5000 ici pour Uvicorn
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+    
+    ports:
+      - "5000:5000"  # Extérieur:Intérieur
+    
     volumes:
-      # --- PERSISTANCE DES DONNÉES ---
-      - ./backend-python/recordings:/code/recordings
-      - ./backend-python/voice_bank:/code/voice_bank
-
-      # --- HOT RELOAD (DÉVELOPPEMENT) ---
-      # Remplace le code interne du conteneur par ton code local en temps réel.
-      # Permet de modifier le Python sans reconstruire l'image.
       - ./backend-python/app:/code/app
+      - ./data_shared:/data             # Disque partagé avec le Worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_PATH=/data
+      - HF_TOKEN=${HF_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
 
+  # ============================================================================
+  # 3. L'OUVRIER (WORKER IA)
+  # Rôle : Traite les tâches lourdes (Whisper, Pyannote).
+  # ✅ ACCÈS EXCLUSIF AU GPU.
+  # ============================================================================
+  worker:
+    build: 
+      context: ./backend-python
+    container_name: sms_worker
+    
+    # Mode écoute Taskiq (Pas de port HTTP)
+    command: taskiq worker app.broker:broker --fs-discover
+    
+    volumes:
+      - ./backend-python/app:/code/app
+      - ./backend-python/voice_bank:/code/voice_bank
+      - ./data_shared:/data             # Disque partagé (Lecture)
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_PATH=/data
+      - HF_TOKEN=${HF_TOKEN}
+    
+    # Configuration NVIDIA
     deploy:
       resources:
         reservations:
@@ -40,8 +74,9 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    depends_on:
+      - redis
 
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`localhost`) || PathPrefix(`/api`)"
-      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+# Volumes persistants
+volumes:
+  redis_data:

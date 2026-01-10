@@ -1,31 +1,41 @@
-# 1. Image de base (CUDA 12.4 = Stable)
+# On utilise l'image officielle NVIDIA CUDA (Compatible RTX 4070)
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-# 2. Outils système
+# Variables d'environnement pour Python
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# 1. Installation des dépendances système
+# Ajout de 'pkg-config', 'gcc' et des lib de dev FFmpeg pour que PyAV puisse compiler
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    ffmpeg \
     git \
+    ffmpeg \
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Dossier de travail
+# 2. Configuration du dossier de travail
 WORKDIR /code
 
-# 4. Installation des dépendances
+# 3. Copie des fichiers de dépendances
 COPY requirements.txt .
+
+# 4. Mise à jour de pip et installation des requirements
+# On upgrade pip pour éviter les soucis de wheel
 RUN pip3 install --upgrade pip
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# --- 🛠️ LA SOLUTION "EN DUR" 🛠️ ---
-# On sait que c'est Python 3.10. On écrit le chemin directement.
-# On pointe vers les dossiers où pip a installé les drivers NVIDIA.
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:$LD_LIBRARY_PATH
-# -----------------------------------
-
-# 5. Copie du code (on copie le dossier app)
+# 5. Copie du code source
 COPY app ./app
 
-# 6. Lancement (on pointe vers app.main:app)
-# On lance uvicorn sur le port 8000 interne
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Note: La commande de lancement est définie dans docker-compose.yml

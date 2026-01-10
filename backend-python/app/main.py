@@ -1,76 +1,91 @@
 """
-Point d'entrée principal de l'application Smart Meeting Scribe.
-
-Ce fichier est volontairement minimaliste (~25 lignes). Son rôle :
-1. Créer l'instance FastAPI avec les métadonnées
-2. Monter le router API v1 (qui contient tous les endpoints)
-3. Fournir une route santé à la racine
-
-Toute la logique métier est déléguée aux modules :
-- api/v1/router.py → centralise les endpoints
-- services/        → logique IA (diarisation, transcription, etc.)
-- core/            → configuration et gestion des modèles
-
-Architecture :
-    main.py (ce fichier)
-        └── api/v1/router.py
-            ├── endpoints/transcribe.py  → POST /api/v1/process/
-            └── endpoints/voice_bank.py  → GET /api/v1/voice-bank/
+Smart Meeting Scribe V3.1 - API Gateway
+Versions : FastAPI 0.128.0 | Taskiq 0.12.1
 """
 
+# 🛡️ 1. SHIELD TORCHAUDIO (Compatibilité Pyannote vs Versions 2026)
+# Doit impérativement être placé avant l'import des routeurs ou modèles
+import torchaudio
+if not hasattr(torchaudio, "set_audio_backend"):
+    setattr(torchaudio, "set_audio_backend", lambda x: None)
+
 from fastapi import FastAPI
-from app.api.v1.router import api_router  # Import du router hub qui contient tous les endpoints
-import torch  # Pour vérifier la disponibilité GPU
+import uvicorn
+
+# --- Imports V3.1 ---
+from app.api.v1.router import api_router
+from app.broker import broker
+# On importe la vraie tâche IA définie dans app/worker/tasks.py
+from app.worker.tasks import process_transcription_full
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CRÉATION DE L'APPLICATION FASTAPI
-# ══════════════════════════════════════════════════════════════════════════════
-# Ces métadonnées apparaissent dans la documentation Swagger (http://localhost:5000/docs)
+# INITIALISATION DE L'APPLICATION
 # ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI(
-    title="Smart Meeting Scribe",
-    description="API de transcription et diarisation optimisée VRAM",
-    version="1.0.0"
+    title="Smart Meeting Scribe V3.1",
+    description="API Gateway Asynchrone (FastAPI + Taskiq + Redis)",
+    version="3.1.0"
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MONTAGE DU ROUTER API V1
+# GESTION DU CYCLE DE VIE (LIFECYCLE)
 # ══════════════════════════════════════════════════════════════════════════════
-# On "monte" le router principal sur le préfixe /api/v1
-# Toutes les routes définies dans api_router seront préfixées par /api/v1
-# Exemple : POST "/" dans transcribe.py → POST /api/v1/process/
+@app.on_event("startup")
+async def startup():
+    """Connexion au Broker Redis au lancement pour pouvoir envoyer des tâches."""
+    if not broker.is_worker_process:
+        await broker.startup()
+        print("🔗 [API] Connectée au Broker Redis.")
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Déconnexion propre de Redis à l'arrêt."""
+    if not broker.is_worker_process:
+        await broker.shutdown()
+        print("👋 [API] Déconnexion du Broker.")
+
 # ══════════════════════════════════════════════════════════════════════════════
+# ROUTING & ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Inclusion du router principal (contient les endpoints transcribe, etc.)
 app.include_router(api_router, prefix="/api/v1")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTE SANTÉ (HEALTH CHECK)
-# ══════════════════════════════════════════════════════════════════════════════
-# Route simple à la racine pour vérifier que le serveur fonctionne
-# et que le GPU est disponible
-# ══════════════════════════════════════════════════════════════════════════════
 @app.get("/")
-async def root():
-    """
-    Health check endpoint.
-    
-    Returns:
-        JSON avec message de bienvenue et statut GPU
-    """
+async def status():
+    """Health check simple."""
     return {
-        "message": "Bienvenue sur l'API Smart Meeting Scribe",
-        "gpu_available": torch.cuda.is_available(),
-        "device": "cuda" if torch.cuda.is_available() else "cpu"
+        "status": "online", 
+        "version": "3.1.0", 
+        "taskiq": "0.12.1",
+        "role": "API Gateway (Producer)"
     }
 
+@app.post("/test-queue")
+async def send_test(msg: str = "Test-Audio"):
+    """
+    Endpoint de test pour vérifier la communication API -> Worker.
+    On envoie une tâche factice au pipeline complet.
+    """
+    # On simule l'ID d'une réunion et un chemin de fichier
+    meeting_id = "test-uuid-12345"
+    fake_file_path = f"/data/uploads/{msg}.wav"
+    
+    # Envoi de la tâche vers Redis via .kiq()
+    sent_task = await process_transcription_full.kiq(
+        file_path=fake_file_path,
+        meeting_id=meeting_id
+    )
+    
+    return {
+        "status": "Job IA envoyé au worker",
+        "task_id": sent_task.task_id,
+        "meeting_id": meeting_id,
+        "note": "Le worker va tenter de traiter ce fichier fictif."
+    }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LANCEMENT EN MODE DÉVELOPPEMENT
-# ══════════════════════════════════════════════════════════════════════════════
-# Ce bloc n'est exécuté que si on lance directement : python main.py
-# En production (Docker), uvicorn est lancé différemment via le Dockerfile
+# DÉMARRAGE (LOCAL DEV)
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    import uvicorn
-    # reload=True : redémarre automatiquement quand le code change
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=5000, reload=True)

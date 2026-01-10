@@ -1,10 +1,8 @@
 # 🏗️ Architecture Technique : Smart Meeting Scribe V3.1
 
-> **Version** : 3.1 (Stack "Safe & Lean")
->
-> **Approche** : "Clean Host", "AI Native" & "Cloud Ready"
->
-> **Cible** : Déploiement On-Premise (Docker) sur GPU unique (Consumer Grade - ex: RTX 4070)
+- **Version** : 3.1 (Stack "Safe & Lean")
+- **Approche** : "Clean Host", "AI Native" & "Cloud Ready"
+- **Cible** : Déploiement On-Premise (Docker) sur GPU unique (Consumer Grade - ex: RTX 4070)
 
 Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de performance GPU validée par l'audit 2026.
 
@@ -20,7 +18,7 @@ Le passage à la V3.1 corrige les défauts de maintenance des files d'attente hi
 |--------|-------------|
 | **Découplage "Async-Native"** | L'API délègue le travail via une stack asynchrone moderne (Taskiq) qui partage l'injection de dépendances avec FastAPI. Plus de "hacks" pour faire parler le Web et le Worker. |
 | **Stockage Abstrait (fsspec)** | Plutôt que de lier le code à un disque dur ou à AWS S3, nous utilisons une abstraction. Le code lit `protocol://file.wav`. Aujourd'hui c'est le disque NVMe (Rapide), demain c'est MinIO/S3 (Scalable), sans changer une ligne de code. |
-| **Sécurité GPU "Defensive"** | Le système utilise le mode **Spawn strict** et le **Recyclage des Workers** pour contrer les fuites de mémoire et les instabilités des drivers CUDA. |
+| **Sécurité GPU "Defensive"** | Le système utilise le mode Spawn strict et le Recyclage des Workers pour contrer les fuites de mémoire et les instabilités des drivers CUDA. |
 
 ---
 
@@ -31,18 +29,18 @@ Le passage à la V3.1 corrige les défauts de maintenance des files d'attente hi
 | Composant | Rôle |
 |-----------|------|
 | **Docker Compose** | Orchestrateur unique. Tout le système démarre avec une seule commande. |
-| **Traefik** (Reverse Proxy) | Porte d'entrée unique (Port 80). Route le trafic et gérera le SSL. |
+| **Traefik (Reverse Proxy)** | Porte d'entrée unique (Port 80). Route le trafic et gérera le SSL. |
 
 ### ⚡ Couche Application (Backend)
 
 | Composant | Rôle | Performance |
 |-----------|------|-------------|
-| **FastAPI** (Python) | Guichetier. Reçoit le fichier, utilise `fsspec` pour le stocker, et pousse la tâche dans Redis. | Temps de réponse < 200ms |
-| **Taskiq** (Orchestrateur) | Remplaçant validé d'ARQ/Celery. Intégration native avec FastAPI, typage strict, et support robuste des middlewares. | — |
+| **FastAPI (Python)** | Guichetier. Reçoit le fichier, utilise fsspec pour le stocker, et pousse la tâche dans Redis. | Temps de réponse < 200ms |
+| **Taskiq (Orchestrateur)** | Remplaçant validé d'ARQ/Celery. Intégration native avec FastAPI, typage strict, et support robuste des middlewares. | — |
 
 > [!TIP]
 > **Pourquoi Taskiq ?**
-> ARQ est en maintenance et Celery gère mal l'async. Taskiq est le standard moderne pour FastAPI, permettant de partager la connexion DB et la configuration entre l'API et le Worker.
+> ARQ est en maintenance et Celery gère mal l'async moderne. Taskiq est le standard pour FastAPI, permettant de partager la connexion DB et la configuration entre l'API et le Worker.
 
 ### 🧠 Couche Intelligence (Worker IA)
 
@@ -58,9 +56,9 @@ Le "Cerveau" du système. Isolé dans son propre processus (Spawn Mode).
 
 | Composant | Rôle |
 |-----------|------|
-| **Redis 7** (Alpine) | Broker & Backend : Gère la file d'attente Taskiq et stocke les résultats temporaires. |
+| **Redis 7 (Alpine)** | Broker & Backend : Gère la file d'attente Taskiq et stocke les résultats temporaires. |
 | **PostgreSQL 15** | Mémoire à long terme (Utilisateurs, Métadonnées, Indexation). |
-| **fsspec** (Abstraction) | **Couche Logique** : Interface unique pour les fichiers.<br>• **Phase 1** (Actuelle) : Backend `LocalFileSystem` (Performance NVMe).<br>• **Phase 2** (Future) : Backend `S3FileSystem` (MinIO). |
+| **fsspec (Abstraction)** | **Couche Logique** : Interface unique pour les fichiers.<br>• **Phase 1 (Actuelle)** : Backend LocalFileSystem (Performance NVMe).<br>• **Phase 2 (Future)** : Backend S3FileSystem (MinIO). |
 
 ---
 
@@ -97,7 +95,7 @@ sequenceDiagram
     Worker->>Redis: Task Success
     
     opt Recyclage
-        Note over Worker: ♻️ Restart Process (Memoire Purge)
+        Note over Worker: ♻️ Restart Process (Mémoire Purge)
     end
 ```
 
@@ -105,7 +103,7 @@ sequenceDiagram
 
 1. **Ingestion (FastAPI + fsspec)**
    - FastAPI reçoit le stream.
-   - Il écrit via `fsspec` (agnostique du support physique).
+   - Il écrit via fsspec (agnostique du support physique).
    - Il envoie le message à Redis via le broker Taskiq.
 
 2. **Traitement (Worker Taskiq)**
@@ -122,7 +120,7 @@ sequenceDiagram
 ## 4. Stratégie de Gestion GPU (VRAM)
 
 > [!CAUTION]
-> Point critique validé par l'audit.
+> Point critique validé par l'audit pour la stabilité long terme.
 
 ### Protocole de Sécurité CUDA
 
@@ -143,7 +141,7 @@ L'architecture V3.1 prépare le terrain pour la scalabilité sans dette techniqu
 
 | Feature | Impact V3.1 |
 |---------|-------------|
-| **Passage Cluster** | Grâce à `fsspec`, basculer sur MinIO (S3) se fait en changeant 1 variable d'environnement (`STORAGE_PROTOCOL=s3`). Le code ne change pas. |
+| **Passage Cluster** | Grâce à fsspec, basculer sur MinIO (S3) se fait en changeant 1 variable d'environnement (`STORAGE_PROTOCOL=s3`). Le code ne change pas. |
 | **RAG (Vector Search)** | L'intégration de Qdrant est triviale car Taskiq peut facilement lancer des sous-tâches d'embedding (BGE-M3) après la transcription. |
 | **Frontend Realtime** | Redis est déjà configuré pour le Pub/Sub. On pourra streamer la progression (SSE) directement au Frontend Next.js. |
 

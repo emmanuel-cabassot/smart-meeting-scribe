@@ -1,14 +1,35 @@
 services:
 
   # ============================================================================
+  # 0. LA TOUR DE CONTROLE (TRAEFIK V3)
+  # Rôle : Reverse Proxy. Point d'entrée unique sur le port 80.
+  # ============================================================================
+  traefik:
+    image: traefik:v3.1
+    container_name: sms_traefik
+    command:
+      - "--api.insecure=true"        # Dashboard sur 8080
+      - "--providers.docker=true"    # Écoute Docker
+      - "--providers.docker.exposedbydefault=false" # 🛡️ Sécurité : ignore les autres containers
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"                      # Port Web public (http://localhost)
+      - "8080:8080"                  # Dashboard Traefik
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - sms_network
+    restart: unless-stopped
+
+  # ============================================================================
   # 1. LE PASSE-PLAT (BROKER REDIS)
-  # Rôle : Stocke les messages entre l'API et le Worker.
+  # Rôle : File d'attente pour les tâches IA.
   # ============================================================================
   redis:
     image: redis:7-alpine
     container_name: sms_redis
-    ports:
-      - "6379:6379"
+    networks:
+      - sms_network
     volumes:
       - redis_data:/data
     healthcheck:
@@ -16,26 +37,30 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   # ============================================================================
   # 2. LE GUICHET (API GATEWAY)
-  # Rôle : Reçoit les fichiers et les envoie au Worker via Redis.
-  # ⚠️ Pas de GPU ici. Port 5000 (car 8000 pris par Portainer).
+  # Rôle : FastAPI Gateway (FastAPI 0.128 | Taskiq 0.12).
   # ============================================================================
   api:
     build: 
       context: ./backend-python
     container_name: sms_api
-    
-    # On force le port 5000 ici pour Uvicorn
     command: uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
     
-    ports:
-      - "5000:5000"  # Extérieur:Intérieur
+    expose:
+      - "5000" # Expose en interne pour Traefik uniquement
+    
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sms_api.rule=Host(`localhost`)"
+      - "traefik.http.routers.sms_api.entrypoints=web"
+      - "traefik.http.services.sms_api.loadbalancer.server.port=5000"
     
     volumes:
       - ./backend-python/app:/code/app
-      - ./data_shared:/data             # Disque partagé avec le Worker
+      - ./data_shared:/data
     environment:
       - REDIS_URL=redis://redis:6379
       - STORAGE_PATH=/data
@@ -43,30 +68,30 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - sms_network
+    restart: unless-stopped
 
   # ============================================================================
   # 3. L'OUVRIER (WORKER IA)
-  # Rôle : Traite les tâches lourdes (Whisper, Pyannote).
-  # ✅ ACCÈS EXCLUSIF AU GPU.
+  # Rôle : Pipeline IA (Diarisation -> Identification -> Transcription).
+  # ✅ ACCÈS GPU EXCLUSIF.
   # ============================================================================
   worker:
     build: 
       context: ./backend-python
     container_name: sms_worker
-    
-    # Mode écoute Taskiq (Pas de port HTTP)
-    command: taskiq worker app.broker:broker --fs-discover
+    command: taskiq worker app.broker:broker --fs-discover --workers 1
     
     volumes:
       - ./backend-python/app:/code/app
       - ./backend-python/voice_bank:/code/voice_bank
-      - ./data_shared:/data             # Disque partagé (Lecture)
+      - ./data_shared:/data
     environment:
       - REDIS_URL=redis://redis:6379
       - STORAGE_PATH=/data
       - HF_TOKEN=${HF_TOKEN}
     
-    # Configuration NVIDIA
     deploy:
       resources:
         reservations:
@@ -76,7 +101,17 @@ services:
               capabilities: [gpu]
     depends_on:
       - redis
+    networks:
+      - sms_network
+    restart: unless-stopped
 
-# Volumes persistants
+# ══════════════════════════════════════════════════════════════════════════════
+# RÉSEAUX & VOLUMES
+# ══════════════════════════════════════════════════════════════════════════════
+networks:
+  sms_network:
+    name: sms_network # Force le nom pour éviter les préfixes docker
+    driver: bridge
+
 volumes:
   redis_data:

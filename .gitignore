@@ -35,3 +35,5 @@ temp_*
 # --- RÉSULTATS (Diarisation/Transcription) ---
 # On ignore le dossier où sont sauvegardés les JSON
 recordings/
+data_shared/results/
+data_shared/uploads/

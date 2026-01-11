@@ -1,4 +1,4 @@
-# On pointe vers CUDA 12.4
+# On garde ta source CUDA 12.4
 --extra-index-url https://download.pytorch.org/whl/cu124
 
 torch
@@ -11,3 +11,10 @@ faster-whisper==1.1.0
 pyannote.audio
 numpy
 scipy
+
+# --- ON AJOUTE UNIQUEMENT LA PLOMBERIE TASKIQ ---
+taskiq==0.12.1
+taskiq-redis==1.2.1
+taskiq-fastapi==0.4.0
+redis==7.1.0
+fsspec==2025.12.0

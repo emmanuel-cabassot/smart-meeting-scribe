@@ -1,32 +1,26 @@
-import torch
 import os
+import torch
 
-# 🚀 BOOST PERFORMANCE RTX 4000 (TF32)
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+class Settings:
+    PROJECT_NAME: str = "Smart Meeting Scribe V3"
+    VERSION: str = "3.1.0"
+    
+    # --- Infrastructure ---
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
+    STORAGE_PATH: str = os.getenv("STORAGE_PATH", "/data")
+    HF_TOKEN: str = os.getenv("HF_TOKEN", "")
 
-# --- NOUVEAU : Récupération du Token ---
-# Si la variable n'existe pas, on met None, mais le modèle plantera plus tard si c'est le cas
-HF_TOKEN = os.getenv("HF_TOKEN")
-# ---------------------------------------
+    # --- IA & GPU (Les variables manquantes) ---
+    # Détection automatique : 'cuda' si GPU disponible, sinon 'cpu'
+    DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # Type de calcul : float16 est idéal pour les RTX (gain de vitesse/VRAM)
+    # On utilise int8_float16 si on veut encore plus d'économie
+    COMPUTE_TYPE: str = "float16" if torch.cuda.is_available() else "int8"
 
-def get_device_config():
-    if torch.cuda.is_available():
-        return {
-            "device": "cuda",
-            "compute_type": "int8_float16",
-            "name": torch.cuda.get_device_name(0)
-        }
-    else:
-        return {
-            "device": "cpu",
-            "compute_type": "int8",
-            "name": "CPU"
-        }
+settings = Settings()
 
-# Variables globales accessibles partout
-CONFIG = get_device_config()
-DEVICE = CONFIG["device"]
-COMPUTE_TYPE = CONFIG["compute_type"]
-
-print(f"⚙️ Configuration : {CONFIG['name']} ({DEVICE})")
+# Export des variables pour la compatibilité avec tes anciens services
+DEVICE = settings.DEVICE
+COMPUTE_TYPE = settings.COMPUTE_TYPE
+HF_TOKEN = settings.HF_TOKEN

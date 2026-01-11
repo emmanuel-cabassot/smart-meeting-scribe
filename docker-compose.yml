@@ -1,38 +1,97 @@
 services:
-  # --- 1. Reverse Proxy (Traefik) ---
+
+  # ============================================================================
+  # 0. LA TOUR DE CONTROLE (TRAEFIK V3)
+  # Rôle : Reverse Proxy. Point d'entrée unique sur le port 80.
+  # ============================================================================
   traefik:
-    image: traefik:v3.0
-    container_name: traefik
+    image: traefik:v3.1
+    container_name: sms_traefik
     command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
+      - "--api.insecure=true"        # Dashboard sur 8080
+      - "--providers.docker=true"    # Écoute Docker
+      - "--providers.docker.exposedbydefault=false" # 🛡️ Sécurité : ignore les autres containers
       - "--entrypoints.web.address=:80"
     ports:
-      - "80:80"
-      - "8080:8080"
+      - "80:80"                      # Port Web public (http://localhost)
+      - "8080:8080"                  # Dashboard Traefik
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - sms_network
+    restart: unless-stopped
 
-  # --- 2. Backend IA ---
-  backend-python:
+  # ============================================================================
+  # 1. LE PASSE-PLAT (BROKER REDIS)
+  # Rôle : File d'attente pour les tâches IA.
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sms_redis
+    networks:
+      - sms_network
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # 2. LE GUICHET (API GATEWAY)
+  # Rôle : FastAPI Gateway (FastAPI 0.128 | Taskiq 0.12).
+  # ============================================================================
+  api:
     build: 
       context: ./backend-python
-    container_name: smart-meeting-scribe
-    restart: unless-stopped
-    env_file:
-      - .env
-
+    container_name: sms_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+    
+    expose:
+      - "5000" # Expose en interne pour Traefik uniquement
+    
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sms_api.rule=Host(`localhost`)"
+      - "traefik.http.routers.sms_api.entrypoints=web"
+      - "traefik.http.services.sms_api.loadbalancer.server.port=5000"
+    
     volumes:
-      # --- PERSISTANCE DES DONNÉES ---
-      - ./backend-python/recordings:/code/recordings
-      - ./backend-python/voice_bank:/code/voice_bank
-
-      # --- HOT RELOAD (DÉVELOPPEMENT) ---
-      # Remplace le code interne du conteneur par ton code local en temps réel.
-      # Permet de modifier le Python sans reconstruire l'image.
       - ./backend-python/app:/code/app
+      - ./data_shared:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_PATH=/data
+      - HF_TOKEN=${HF_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - sms_network
+    restart: unless-stopped
 
+  # ============================================================================
+  # 3. L'OUVRIER (WORKER IA)
+  # Rôle : Pipeline IA (Diarisation -> Identification -> Transcription).
+  # ✅ ACCÈS GPU EXCLUSIF.
+  # ============================================================================
+  worker:
+    build: 
+      context: ./backend-python
+    container_name: sms_worker
+    command: taskiq worker app.broker:broker --fs-discover --workers 1
+    
+    volumes:
+      - ./backend-python/app:/code/app
+      - ./backend-python/voice_bank:/code/voice_bank
+      - ./data_shared:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_PATH=/data
+      - HF_TOKEN=${HF_TOKEN}
+    
     deploy:
       resources:
         reservations:
@@ -40,8 +99,19 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    depends_on:
+      - redis
+    networks:
+      - sms_network
+    restart: unless-stopped
 
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`localhost`) || PathPrefix(`/api`)"
-      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+# ══════════════════════════════════════════════════════════════════════════════
+# RÉSEAUX & VOLUMES
+# ══════════════════════════════════════════════════════════════════════════════
+networks:
+  sms_network:
+    name: sms_network # Force le nom pour éviter les préfixes docker
+    driver: bridge
+
+volumes:
+  redis_data:

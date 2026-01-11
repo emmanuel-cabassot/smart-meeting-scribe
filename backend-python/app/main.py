@@ -1,10 +1,10 @@
 """
 Smart Meeting Scribe V3.1 - API Gateway
-Versions : FastAPI 0.128.0 | Taskiq 0.12.1
+Versions : FastAPI 0.128.0 | Taskiq 0.12.1 | Postgres 18
 """
 
 # 🛡️ 1. SHIELD TORCHAUDIO (Compatibilité Pyannote vs Versions 2026)
-# Doit impérativement être placé avant l'import des routeurs ou modèles
+# Doit impérativement être placé avant l'import des routeurs ou modèles IA
 import torchaudio
 if not hasattr(torchaudio, "set_audio_backend"):
     setattr(torchaudio, "set_audio_backend", lambda x: None)
@@ -12,18 +12,23 @@ if not hasattr(torchaudio, "set_audio_backend"):
 from fastapi import FastAPI
 import uvicorn
 
-# --- Imports V3.1 ---
+# --- Imports Application V3.1 ---
 from app.api.v1.router import api_router
 from app.broker import broker
-# On importe la vraie tâche IA définie dans app/worker/tasks.py
 from app.worker.tasks import process_transcription_full
+
+# --- Imports Base de Données (Nouveauté V3.1) ---
+from app.core.database import engine, Base
+# ⚠️ IMPORT CRITIQUE : On importe le module des modèles pour que SQLAlchemy les détecte.
+# Sans cet import, Base.metadata.create_all ne créera aucune table.
+from app.core import models_db 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # INITIALISATION DE L'APPLICATION
 # ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI(
     title="Smart Meeting Scribe V3.1",
-    description="API Gateway Asynchrone (FastAPI + Taskiq + Redis)",
+    description="API Gateway Asynchrone (FastAPI + Taskiq + Redis + Postgres)",
     version="3.1.0"
 )
 
@@ -32,60 +37,85 @@ app = FastAPI(
 # ══════════════════════════════════════════════════════════════════════════════
 @app.on_event("startup")
 async def startup():
-    """Connexion au Broker Redis au lancement pour pouvoir envoyer des tâches."""
+    """
+    Séquence de démarrage V3.1 :
+    1. Initialisation de la Base de Données (Création des tables).
+    2. Connexion au Broker de Tâches (Redis).
+    """
+    print("🚀 [BOOT] Démarrage de Smart Meeting Scribe V3.1...")
+
+    # A. INITIALISATION DB (Auto-Migration)
+    # On se connecte à Postgres et on crée les tables si elles n'existent pas
+    try:
+        async with engine.begin() as conn:
+            # create_all lit tous les modèles enregistrés dans Base (d'où l'import de models_db)
+            await conn.run_sync(Base.metadata.create_all)
+        print("💾 [DB] Tables synchronisées avec succès (PostgreSQL).")
+    except Exception as e:
+        print(f"❌ [DB] Erreur critique lors de l'init DB : {e}")
+        # On ne bloque pas forcément le boot, mais c'est grave.
+
+    # B. CONNEXION BROKER TASKIQ
+    # On ne lance le broker que si on est dans le processus API (pas le worker)
     if not broker.is_worker_process:
         await broker.startup()
-        print("🔗 [API] Connectée au Broker Redis.")
+        print("🔗 [TASKIQ] Connecté au Broker Redis.")
 
 @app.on_event("shutdown")
 async def shutdown():
-    """Déconnexion propre de Redis à l'arrêt."""
+    """Déconnexion propre des services à l'arrêt."""
     if not broker.is_worker_process:
         await broker.shutdown()
-        print("👋 [API] Déconnexion du Broker.")
+        print("👋 [TASKIQ] Déconnexion du Broker.")
+    
+    # Note : Le moteur SQLAlchemy (engine) gère son pool tout seul, 
+    # pas besoin de close() explicite ici en asyncpg généralement.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ROUTING & ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Inclusion du router principal (contient les endpoints transcribe, etc.)
+# Inclusion du router principal (endpoints /process, /voice-bank...)
 app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def status():
-    """Health check simple."""
+    """Health check global."""
     return {
         "status": "online", 
         "version": "3.1.0", 
-        "taskiq": "0.12.1",
-        "role": "API Gateway (Producer)"
+        "components": {
+            "api": "FastAPI",
+            "worker": "Taskiq",
+            "database": "PostgreSQL 18",
+            "storage": "fsspec"
+        }
     }
 
 @app.post("/test-queue")
 async def send_test(msg: str = "Test-Audio"):
     """
-    Endpoint de test pour vérifier la communication API -> Worker.
-    On envoie une tâche factice au pipeline complet.
+    Endpoint de debug pour tester la communication API -> Worker.
+    Envoie une tâche factice sans passer par l'upload de fichier.
     """
-    # On simule l'ID d'une réunion et un chemin de fichier
-    meeting_id = "test-uuid-12345"
+    meeting_id = "test-uuid-debug-123"
     fake_file_path = f"/data/uploads/{msg}.wav"
     
-    # Envoi de la tâche vers Redis via .kiq()
+    # Envoi asynchrone via .kiq()
     sent_task = await process_transcription_full.kiq(
         file_path=fake_file_path,
         meeting_id=meeting_id
     )
     
     return {
-        "status": "Job IA envoyé au worker",
+        "status": "Job IA simulé envoyé",
         "task_id": sent_task.task_id,
         "meeting_id": meeting_id,
-        "note": "Le worker va tenter de traiter ce fichier fictif."
+        "info": "Vérifier les logs du conteneur 'worker' pour voir la réception."
     }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DÉMARRAGE (LOCAL DEV)
+# DÉMARRAGE (DEV LOCAL)
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=5000, reload=True)

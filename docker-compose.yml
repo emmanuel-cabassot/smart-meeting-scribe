@@ -23,7 +23,7 @@ services:
 
   # ============================================================================
   # 1. LE PASSE-PLAT (BROKER REDIS)
-  # Rôle : File d'attente pour les tâches IA.
+  # Rôle : File d'attente pour les tâches IA (Broker Taskiq).
   # ============================================================================
   redis:
     image: redis:7-alpine
@@ -40,8 +40,34 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # 2. LE GUICHET (API GATEWAY)
+  # 2. LA MÉMOIRE (BASE DE DONNÉES) [NOUVEAU V3.1]
+  # Rôle : Stockage persistant (Utilisateurs, Suivi des Jobs, Métadonnées).
+  # Image : Postgres 18 Alpine (Dernière Stable 2026 - Légère & Sécurisée).
+  # ============================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: sms_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: smart_meeting
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d smart_meeting"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sms_network
+    restart: unless-stopped
+
+  # ============================================================================
+  # 3. LE GUICHET (API GATEWAY)
   # Rôle : FastAPI Gateway (FastAPI 0.128 | Taskiq 0.12).
+  # Note : Reçoit les fichiers, les stocke via fsspec et délègue au Worker.
   # ============================================================================
   api:
     build: 
@@ -63,17 +89,21 @@ services:
       - ./data_shared:/data
     environment:
       - REDIS_URL=redis://redis:6379
+      # Connexion asynchrone à la DB (asyncpg)
+      - POSTGRES_URL=postgresql+asyncpg://user:password@postgres:5432/smart_meeting
       - STORAGE_PATH=/data
       - HF_TOKEN=${HF_TOKEN}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - sms_network
     restart: unless-stopped
 
   # ============================================================================
-  # 3. L'OUVRIER (WORKER IA)
+  # 4. L'OUVRIER (WORKER IA)
   # Rôle : Pipeline IA (Diarisation -> Identification -> Transcription).
   # ✅ ACCÈS GPU EXCLUSIF.
   # ============================================================================
@@ -81,6 +111,7 @@ services:
     build: 
       context: ./backend-python
     container_name: sms_worker
+    # Lancement du worker Taskiq avec découverte automatique des tâches
     command: taskiq worker app.broker:broker --fs-discover --workers 1
     
     volumes:
@@ -89,6 +120,8 @@ services:
       - ./data_shared:/data
     environment:
       - REDIS_URL=redis://redis:6379
+      # Le worker doit aussi pouvoir écrire le statut des jobs en DB
+      - POSTGRES_URL=postgresql+asyncpg://user:password@postgres:5432/smart_meeting
       - STORAGE_PATH=/data
       - HF_TOKEN=${HF_TOKEN}
     
@@ -101,6 +134,7 @@ services:
               capabilities: [gpu]
     depends_on:
       - redis
+      - postgres
     networks:
       - sms_network
     restart: unless-stopped
@@ -115,3 +149,4 @@ networks:
 
 volumes:
   redis_data:
+  postgres_data: # Persistance des données PostgreSQL

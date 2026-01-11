@@ -1,20 +1,38 @@
-# On garde ta source CUDA 12.4
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. CORE IA & AUDIO (NVIDIA CUDA 12.4)
+# ══════════════════════════════════════════════════════════════════════════════
 --extra-index-url https://download.pytorch.org/whl/cu124
 
 torch
 torchvision
 torchaudio
-fastapi==0.128.0
-uvicorn==0.40.0
-python-multipart==0.0.9
 faster-whisper==1.1.0
 pyannote.audio
 numpy
 scipy
 
-# --- ON AJOUTE UNIQUEMENT LA PLOMBERIE TASKIQ ---
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. API & WEB (FASTAPI)
+# ══════════════════════════════════════════════════════════════════════════════
+fastapi==0.128.0
+uvicorn==0.40.0
+python-multipart==0.0.9
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. TASKIQ (ASYNC WORKER)
+# ══════════════════════════════════════════════════════════════════════════════
 taskiq==0.12.1
 taskiq-redis==1.2.1
 taskiq-fastapi==0.4.0
 redis==7.1.0
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. PERSISTANCE & STOCKAGE (NOUVEAU V3.1)
+# ══════════════════════════════════════════════════════════════════════════════
+# Abstraction du système de fichiers (Local/S3)
 fsspec==2025.12.0
+
+# Base de données (Compatibilité Python 3.10+)
+SQLAlchemy==2.0.45
+asyncpg==0.31.0
+alembic==1.18.0

@@ -1,160 +1,159 @@
-# Architecture Technique - Smart Meeting Scribe
+# Architecture Technique - Smart Meeting Scribe (V5)
 
-> ⚠️ **WORK IN PROGRESS (WIP)**
-> Ce projet est actuellement en phase de **construction active**. L'architecture et les endpoints peuvent évoluer.
-> *Version actuelle : v0.1.0-alpha*
+> ⚠️ **STABLE ALPHA**
+> Ce projet est passé d'un monolithe à une architecture multi-stacks distribuée.
+> *Version actuelle : v5.0.0-gold*
 
----
-
-## 🎯 Introduction & Contexte
-
-**Smart Meeting Scribe** est une plateforme d'analyse de réunions **100% On-Premise** (hébergement local). Elle permet de transformer automatiquement des enregistrements audio en comptes-rendus structurés et identifiés, sans jamais envoyer de données vers le Cloud (contrairement aux solutions comme Teams, Zoom AI ou Otter.ai).
-
-### Objectifs du projet
-1.  **Confidentialité Absolue** : Tout le traitement (IA) se fait localement sur le serveur de l'entreprise. Aucune donnée vocale ne sort du réseau.
-2.  **Identification Intelligente** : Le système ne se contente pas de transcrire ; il reconnaît *qui* parle grâce à une banque de voix locale (Voice Bank).
-3.  **Performance & Sobriété** : Optimisé pour tourner sur du matériel Grand Public (GPU type RTX 4070 Ti) grâce une gestion dynamique de la mémoire (VRAM).
-
-### Fonctionnalités Clés
-* 🎙️ **Transcription Haute Fidélité** (via Whisper Large v3).
-* 👥 **Diarisation** : Séparation précise des différents interlocuteurs.
-* 🆔 **Identification Biométrique** : Reconnaissance des participants connus.
-* 💾 **Sortie Structurée** : Génération de fichiers JSON exploitables par le Frontend.
+> 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-## 📚 Vue d'ensemble
+> 🚀 **VERSION V5 - Architecture S3-Native & Multi-Utilisateurs**
+> Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
+>
+> Stack : **Next.js 15** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper**
 
-L'application repose sur une architecture modulaire de type **Clean Architecture**, conçue pour être déployée via **Docker**. Le code applicatif est isolé dans le module `app/`, séparant clairement la logique métier, l'API et l'infrastructure.
+---
 
-### Structure en Couches
+## 🎯 Vision & Philosophie
+
+**Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
+
+### Piliers de l'Architecture V5
+
+| Pilier | Description |
+|--------|-------------|
+| � **Sécurité JWT** | Authentification complète des utilisateurs. Hachage Bcrypt et protection des routes par jetons de session. |
+| 🪣 **Stockage Objet (S3)** | Migration vers MinIO. Les fichiers audio et résultats ne dépendent plus du système de fichiers local du conteneur. |
+| ⚡ **Clean Architecture** | Backend API structuré en couches (Endpoints ➔ Services ➔ Modèles) pour une maintenance facilitée. |
+| 🎮 **GPU Safety (VRAM)** | Stratégie Single Model Residency pour faire tourner Whisper Large-v3 et Pyannote sur 12GB de VRAM. |
+
+---
+
+## 🏗️ Architecture Système (Multi-Stacks)
+
+L'application est orchestrée en trois blocs indépendants pour garantir la haute disponibilité des services de base.
+
+### Vue d'ensemble des Flux
 
 ```mermaid
 graph TD
-    Client["Client Frontend / API"] --> Traefik["Traefik - Reverse Proxy"]
-    Traefik --> API["app/main.py - FastAPI"]
+    User((Utilisateur)) --> Front[Frontend Next.js 15 :3000]
+    Front -- "1. API Call + JWT" --> API[API Gateway FastAPI :5000]
     
-    subgraph Backend Python
-        API --> Router["app/api/v1/router.py"]
-        Router --> Endpoints["Endpoints: /transcribe, /voice-bank"]
-        Endpoints --> Services["app/services/ - Logique Métier"]
-        Services --> Core["app/core/ - Infra & Modèles"]
+    subgraph "01-Core (Infrastructure)"
+        DB[(PostgreSQL 16)]
+        Redis[(Redis 7)]
+        S3[("MinIO (S3)")]
+        Qdrant[(Qdrant Vector DB)]
     end
-    
-    Services --> Storage[("Système de Fichiers")]
-    Core --> GPU[("NVIDIA GPU")]
+
+    subgraph "02-Workers (Compute)"
+        API -- "2. Stream Audio" --> S3
+        API -- "3. Enqueue" --> Redis
+        Redis -- "4. Pull Task" --> Worker[Worker IA GPU]
+        Worker -- "5. Process" --> S3
+        Worker -- "6. Status Update" --> DB
+    end
 ```
 
-## 🔄 Pipeline de Traitement Audio
+### Composants Techniques
 
-Le traitement d'une réunion suit un flux séquentiel strict pour optimiser l'utilisation de la VRAM (mémoire vidéo).
+| Service | Technologie | Rôle |
+|---------|-------------|------|
+| **Frontend** | Next.js 15 | Interface utilisateur réactive (React 19, Tailwind). |
+| **API** | FastAPI | Gateway. Gestion Auth, Upload direct vers S3, orchestration DB. |
+| **Worker** | Taskiq + Python | Pipeline IA : Diarisation, Transcription, Identification. |
+| **Database** | PostgreSQL 16 | Persistance des utilisateurs, métadonnées des meetings et statuts. |
+| **Object Storage** | MinIO | Stockage compatible S3 pour l'audio et les fichiers JSON de sortie. |
+| **Vector DB** | Qdrant | Base vectorielle pour les futurs services de RAG (Chat avec documents). |
 
+---
+
+## 🔄 Pipeline de Traitement (Workflow V5)
+
+1. **Ingestion (API)** : L'audio est streamé vers MinIO. Une entrée est créée dans Postgres (Statut `PENDING`).
+
+2. **Orchestration** : Une tâche est publiée dans Redis.
+
+3. **Inférence (Worker)** :
+   - Prise en charge ➔ Statut `PROCESSING`.
+   - Pipeline séquentiel (Conversion ➔ Diarisation ➔ Transcription ➔ Fusion).
+   - Sauvegarde des résultats JSON sur MinIO.
+
+4. **Finalisation** : Mise à jour Postgres ➔ Statut `COMPLETED`.
+
+---
+
+## 📂 Structure du Projet
+
+```bash
+smart-meeting-scribe/
+├── 01-core/                 # Infrastructure de base (DB, Redis, S3, Qdrant)
+├── 02-workers/              # Worker IA (Pipeline Whisper/Pyannote)
+│   ├── app/                 # Code métier IA
+│   └── Dockerfile           # Image Cuda 12.4
+├── 03-interface/            # Application Web
+│   ├── backend/             # API FastAPI (Clean Architecture)
+│   │   └── app/
+│   │       ├── api/         # Routes v1 (Auth, Transcribe)
+│   │       ├── core/        # Sécurité & JWT
+│   │       ├── models/      # Tables SQLAlchemy (User, Meeting)
+│   │       └── services/    # Logique S3 & Taskiq
+│   └── frontend/            # Next.js 15 App
+├── manage.sh                # 🛠️ Script Master (Clean & Start)
+└── volumes/                 # Persistance locale des données
 ```
-Fichier Audio (Upload)
-         │
-         ▼
-┌─────────────────────────┐
-│  POST /api/v1/process/  │  ◄── app/api/v1/endpoints/transcribe.py
-└─────────────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│ 1. Audio Conversion     │  app/services/audio.py
-│    (FFmpeg)             │  ➔ Conversion en WAV mono 16kHz
-└─────────────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│ 2. Diarisation          │  app/services/diarization.py
-│    (Pyannote 3.1)       │  ➔ "Qui parle quand ?" (Segments temporels)
-└─────────────────────────┘
-         │ 🧹 release_models() (Libération VRAM)
-         ▼
-┌─────────────────────────┐
-│ 3. Identification       │  app/services/identification.py
-│    (WeSpeaker)          │  ➔ Comparaison avec voice_bank/
-│                         │  ➔ SPEAKER_01 = "Emmanuel"
-└─────────────────────────┘
-         │ 🧹 release_models()
-         ▼
-┌─────────────────────────┐
-│ 4. Transcription        │  app/services/transcription.py
-│    (Faster-Whisper)     │  ➔ Speech-to-Text avec timestamps
-└─────────────────────────┘
-         │ 🧹 release_models()
-         ▼
-┌─────────────────────────┐
-│ 5. Fusion & Stockage    │  app/services/fusion.py & storage.py
-│                         │  ➔ Création du JSON final
-└─────────────────────────┘
-         │
-         ▼
-    { JSON Response }
+
+---
+
+## 🚀 Installation & Démarrage
+
+### Pré-requis
+
+- **Docker** & **Docker Compose**
+- **NVIDIA Container Toolkit** (pour le GPU)
+- Fichier `.env` configuré à la racine
+
+### Commande Unique
+
+Le projet utilise un script d'automatisation qui nettoie, build et lance toutes les stacks :
+
+```bash
+./manage.sh
 ```
 
-## 📂 Organisation du Code
+---
 
-L'application est contenue dans le dossier `app/` pour faciliter les imports et la conteneurisation.
+## 💾 Gestion des Données (Volumes)
 
-### 1. Point d'entrée & Configuration
+Les données sont centralisées dans le dossier `/volumes` pour une portabilité totale :
 
-- **app/main.py** : Point d'entrée de l'application FastAPI. Configure les middlewares, le CORS et monte les routes.
+| Volume | Description |
+|--------|-------------|
+| `postgres_data` | Tables SQL des utilisateurs et historique des réunions. |
+| `minio_data` | Contenu brut du stockage S3 (audio et transcriptions). |
+| `huggingface_cache` | Poids des modèles IA téléchargés (Whisper/Pyannote). |
+| `qdrant_storage` | Index vectoriels pour la recherche sémantique. |
 
-- **app/core/config.py** : Gestion centralisée de la configuration. Charge les variables d'environnement (ex: `HF_TOKEN`) et détecte le matériel (CPU/GPU).
+---
 
-- **app/core/models.py** : Gestionnaire de cycle de vie des modèles IA. Implémente le chargement paresseux (lazy loading) et le nettoyage de la mémoire GPU (`release_models`).
+## ⚡ Optimisation VRAM & Performance
 
-### 2. API (Couche Transport)
+Le système est conçu pour tourner sur une **RTX 4070 Ti (12GB)** :
 
-- **app/api/v1/router.py** : Hub central déclarant toutes les routes de l'API.
+- **Single Model Residency** : Un seul modèle IA chargé à la fois en VRAM.
+- **Async Streaming** : L'API FastAPI streame les fichiers vers MinIO sans bufferisation mémoire excessive.
+- **PostgreSQL 16** : Optimisé pour les requêtes asynchrones via `asyncpg`.
 
-- **app/api/v1/endpoints/transcribe.py** : Chef d'orchestre du pipeline. Reçoit le fichier et appelle séquentiellement les services.
+---
 
-- **app/api/v1/endpoints/voice_bank.py** : Gestion des signatures vocales (ajout/suppression de voix de référence).
+## 📋 Roadmap V5+
 
-### 3. Services (Couche Métier)
+- [ ] Interface de Dashboard Next.js 15 sécurisée.
+- [ ] RAG (Retrieval Augmented Generation) : Chat avec vos réunions.
+- [ ] Export Word/PDF automatisé des comptes-rendus.
 
-- **app/services/audio.py** : Manipulation audio (conversion, normalisation, nettoyage fichiers temporaires).
+---
 
-- **app/services/diarization.py** : Wrapper autour de Pyannote 3.1. Découpe l'audio par locuteur.
-
-- **app/services/transcription.py** : Wrapper autour de Faster-Whisper. Transcrit l'audio en texte.
-
-- **app/services/identification.py** : Moteur de reconnaissance. Compare les segments audio aux empreintes de la voice_bank (Cosine Similarity).
-
-- **app/services/fusion.py** : Algorithme de réconciliation. Associe le texte (Whisper) aux locuteurs identifiés (Pyannote + Identification).
-
-- **app/services/storage.py** : Gestion de la persistance. Sauvegarde les résultats JSON dans le volume `recordings/`.
-
-## 🔌 API Endpoints
-
-| Méthode | Route | Description |
-|---------|-------|-------------|
-| GET | `/` | Health Check. Retourne l'état du service et les infos GPU. |
-| GET | `/docs` | Documentation interactive Swagger UI. |
-| POST | `/api/v1/process/` | Transcription. Upload d'un fichier audio pour analyse complète. |
-| GET | `/api/v1/voice-bank/` | Liste les profils vocaux disponibles. |
-
-## 💾 Gestion des Données & Volumes
-
-L'application utilise des volumes Docker pour la persistance des données :
-
-- **/code/recordings** : Stocke les résultats d'analyse (JSON, logs).
-  - Monté sur l'hôte : `./backend-python/recordings`
-
-- **/code/voice_bank** : Contient les empreintes vocales de référence (fichiers `.wav` ou `.npy`).
-  - Monté sur l'hôte : `./backend-python/voice_bank`
-
-## ⚡ Stratégie d'Optimisation VRAM
-
-Pour tourner sur des GPU grand public (ex: RTX 4070 Ti - 12GB), nous appliquons une stratégie stricte de **Single Model Residency** :
-
-1. Chargement du modèle A.
-2. Inférence (Calcul).
-3. Déchargement explicite :
-   - Suppression des pointeurs Python.
-   - Appel du Garbage Collector (`gc.collect()`).
-   - Vidage du cache CUDA (`torch.cuda.empty_cache()`).
-4. Chargement du modèle B.
-
-Ceci permet d'utiliser des modèles lourds (Whisper Large-v3 + Pyannote 3.1) sans provoquer d'erreurs **Out Of Memory (OOM)**.
+*Dernière mise à jour : 12 Janvier 2026*

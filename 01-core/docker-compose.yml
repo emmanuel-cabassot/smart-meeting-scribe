@@ -1,0 +1,100 @@
+name: sms-core
+
+services:
+  # ============================================================================
+  # 1. POSTGRESQL
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: sms_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ../volumes/postgres_data:/var/lib/postgresql/data
+    networks:
+      - sms_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # 2. REDIS
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sms_redis
+    volumes:
+      - ../volumes/redis_data:/data
+    networks:
+      - sms_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # 3. MINIO (S3)
+  # ============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: sms_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ../volumes/minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - sms_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # 4. QDRANT (Vector DB)
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: sms_qdrant
+    volumes:
+      - ../volumes/qdrant_storage:/qdrant/storage
+    ports:
+      - "6333:6333"
+    networks:
+      - sms_network
+    restart: unless-stopped
+
+  # ============================================================================
+  # 5. TEI (Embeddings CPU)
+  # ============================================================================
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: sms_tei
+    environment:
+      - PORT=8081
+    command: --model-id ${TEI_EMBEDDING_MODEL} --port 8081 --huggingface-hub-cache /data
+    volumes:
+      - ../volumes/huggingface_cache:/data
+    ports:
+      - "8081:8081"
+    networks:
+      - sms_network
+    restart: unless-stopped
+
+networks:
+  sms_network:
+    name: sms_network
+    driver: bridge

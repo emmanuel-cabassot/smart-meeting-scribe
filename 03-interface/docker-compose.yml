@@ -1,0 +1,42 @@
+name: sms-interface
+
+services:
+  # ============================================================================
+  # API GATEWAY (FastAPI)
+  # Rôle : Reçoit les fichiers et les stream vers MinIO
+  # ============================================================================
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    image: smart-meeting-scribe-api:v5
+    container_name: sms_api
+    
+    # Variables d'environnement
+    env_file:
+      - ../.env
+    
+    # Exposition interne (Traefik s'en occupera plus tard)
+    ports:
+      - "5000:8000"
+    
+    volumes:
+      - ./backend/app:/code/app
+    
+    # Variables d'environnement partagées
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    
+    networks:
+      - sms_network
+    restart: unless-stopped
+
+# ============================================================================
+# RÉSEAU EXTERNE
+# ============================================================================
+networks:
+  sms_network:
+    external: true

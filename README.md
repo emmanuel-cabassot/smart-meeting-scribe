@@ -1,60 +1,59 @@
-# Architecture Technique - Smart Meeting Scribe (V3.1)
+# Architecture Technique - Smart Meeting Scribe (V5)
 
-> ⚠️ **WORK IN PROGRESS (WIP)**
-> Ce projet est actuellement en phase de **construction active**. L'architecture et les endpoints peuvent évoluer.
-> *Version actuelle : v3.1.0-alpha*
+> ⚠️ **STABLE ALPHA**
+> Ce projet est passé d'un monolithe à une architecture multi-stacks distribuée.
+> *Version actuelle : v5.0.0-gold*
 
 > 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-> 🚀 **VERSION V3.1 - Architecture Asynchrone & Micro-services**  
-> Ce projet est une solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.  
-> Stack : **Docker** • **FastAPI** • **Taskiq (Redis)** • **PostgreSQL** • **Whisper/Pyannote**
+> 🚀 **VERSION V5 - Architecture S3-Native & Multi-Utilisateurs**
+> Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
+>
+> Stack : **Next.js 15** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper**
 
 ---
 
 ## 🎯 Vision & Philosophie
 
-**Smart Meeting Scribe** transforme des enregistrements audio en comptes-rendus structurés et identifiés, en garantissant une **confidentialité absolue**.
+**Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
 
-### Piliers de l'Architecture V3.1
+### Piliers de l'Architecture V5
 
 | Pilier | Description |
 |--------|-------------|
-| 🔒 **Confidentialité "Air-Gap"** | Tout le traitement (IA) est local. Aucune donnée ne quitte le conteneur Docker. |
-| ⚡ **Design Asynchrone (Fire & Forget)** | L'API ne bloque jamais. Elle reçoit la demande, la sécurise et délègue le calcul lourd à un Worker dédié via une file d'attente (Redis). |
-| 🎮 **GPU Safety (VRAM Saver)** | Stratégie stricte d'allocation mémoire pour tourner sur des GPU "Consumer" (RTX 4070 Ti - 12GB) sans crash, grâce au chargement/déchargement dynamique des modèles. |
-| 💾 **Agnostique du Stockage** | Utilisation de `fsspec` pour abstraire le système de fichiers (Compatible Local FS aujourd'hui, S3/MinIO demain sans changer le code). |
+| � **Sécurité JWT** | Authentification complète des utilisateurs. Hachage Bcrypt et protection des routes par jetons de session. |
+| 🪣 **Stockage Objet (S3)** | Migration vers MinIO. Les fichiers audio et résultats ne dépendent plus du système de fichiers local du conteneur. |
+| ⚡ **Clean Architecture** | Backend API structuré en couches (Endpoints ➔ Services ➔ Modèles) pour une maintenance facilitée. |
+| 🎮 **GPU Safety (VRAM)** | Stratégie Single Model Residency pour faire tourner Whisper Large-v3 et Pyannote sur 12GB de VRAM. |
 
 ---
 
-## 🏗️ Architecture Système (Stack Docker)
+## 🏗️ Architecture Système (Multi-Stacks)
 
-L'application est orchestrée via **Docker Compose** et sépare strictement les responsabilités.
+L'application est orchestrée en trois blocs indépendants pour garantir la haute disponibilité des services de base.
 
-### Vue d'ensemble des Conteneurs
+### Vue d'ensemble des Flux
 
 ```mermaid
 graph TD
-    User((Utilisateur)) --> Traefik[Proxy Traefik :80]
-    Traefik --> API[API Gateway :5000]
+    User((Utilisateur)) --> Front[Frontend Next.js 15 :3000]
+    Front -- "1. API Call + JWT" --> API[API Gateway FastAPI :5000]
     
-    subgraph "Data Persistence"
-        DB[(PostgreSQL 18)]
+    subgraph "01-Core (Infrastructure)"
+        DB[(PostgreSQL 16)]
         Redis[(Redis 7)]
-        Storage[("Volume /data")]
+        S3[("MinIO (S3)")]
+        Qdrant[(Qdrant Vector DB)]
     end
 
-    subgraph "Compute"
-        API -- "1. Upload (fsspec)" --> Storage
-        API -- "2. Create Job (Pending)" --> DB
-        API -- "3. Enqueue Task" --> Redis
-        
-        Redis -- "4. Pop Task" --> Worker[Worker IA GPU]
-        Worker -- "5. Read Audio" --> Storage
-        Worker -- "6. Update Status" --> DB
-        Worker -- "7. Write JSON Results" --> Storage
+    subgraph "02-Workers (Compute)"
+        API -- "2. Stream Audio" --> S3
+        API -- "3. Enqueue" --> Redis
+        Redis -- "4. Pull Task" --> Worker[Worker IA GPU]
+        Worker -- "5. Process" --> S3
+        Worker -- "6. Status Update" --> DB
     end
 ```
 
@@ -62,94 +61,48 @@ graph TD
 
 | Service | Technologie | Rôle |
 |---------|-------------|------|
-| **Proxy** | Traefik V3 | Point d'entrée unique, Routing, Load Balancing. |
-| **API** | FastAPI | Gateway légère. Validation des entrées, Upload, Gestion de la DB. |
-| **Broker** | Redis 7 | File d'attente de messages. Fait le lien entre API et Worker. |
-| **Worker** | Taskiq + Python | Exécute le pipeline IA lourd. Accès exclusif au GPU. |
-| **Database** | PostgreSQL 18 | "Mémoire" du système. Stocke les métadonnées, statuts des jobs, utilisateurs. |
-| **Storage** | fsspec | Abstraction du stockage (fichiers audio & résultats JSON). |
+| **Frontend** | Next.js 15 | Interface utilisateur réactive (React 19, Tailwind). |
+| **API** | FastAPI | Gateway. Gestion Auth, Upload direct vers S3, orchestration DB. |
+| **Worker** | Taskiq + Python | Pipeline IA : Diarisation, Transcription, Identification. |
+| **Database** | PostgreSQL 16 | Persistance des utilisateurs, métadonnées des meetings et statuts. |
+| **Object Storage** | MinIO | Stockage compatible S3 pour l'audio et les fichiers JSON de sortie. |
+| **Vector DB** | Qdrant | Base vectorielle pour les futurs services de RAG (Chat avec documents). |
 
 ---
 
-## 🔄 Pipeline de Traitement (Workflow IA)
+## 🔄 Pipeline de Traitement (Workflow V5)
 
-Le traitement suit un cycle de vie strict suivi en base de données (table `meetings`).
+1. **Ingestion (API)** : L'audio est streamé vers MinIO. Une entrée est créée dans Postgres (Statut `PENDING`).
 
-### 1. Réception (API)
-- Upload du fichier via `fsspec` ➔ `/data/uploads/uuid.wav`
-- Création entrée DB ➔ Statut `PENDING`
-- Envoi tâche au Broker
+2. **Orchestration** : Une tâche est publiée dans Redis.
 
-### 2. Prise en Charge (Worker)
-- Récupération tâche Redis
-- Mise à jour DB ➔ Statut `PROCESSING`
+3. **Inférence (Worker)** :
+   - Prise en charge ➔ Statut `PROCESSING`.
+   - Pipeline séquentiel (Conversion ➔ Diarisation ➔ Transcription ➔ Fusion).
+   - Sauvegarde des résultats JSON sur MinIO.
 
-### 3. Pipeline IA Séquentiel (Optimisation VRAM)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. Conversion       │  Normalisation audio (WAV 16kHz Mono)│
-└──────────────────────┴──────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  2. Diarisation      │  Pyannote 3.1 - "Qui parle ?"       │
-│     (Pyannote 3.1)   │  Segmentation temporelle             │
-└──────────────────────┴──────────────────────────────────────┘
-                       │ 🧹 Flush VRAM
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  3. Identification   │  WeSpeaker - Comparaison vectorielle │
-│     (WeSpeaker)      │  avec la Banque de Voix              │
-└──────────────────────┴──────────────────────────────────────┘
-                       │ 🧹 Flush VRAM
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  4. Transcription    │  Faster-Whisper Large-v3             │
-│     (Faster-Whisper) │  Speech-to-Text                      │
-└──────────────────────┴──────────────────────────────────────┘
-                       │ 🧹 Flush VRAM
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  5. Fusion           │  Réconciliation segments + texte     │
-└──────────────────────┴──────────────────────────────────────┘
-```
-
-### 4. Finalisation
-- Sauvegarde des JSONs (Transcription, Diarisation, Fusion) via `fsspec`
-- Mise à jour DB ➔ Statut `COMPLETED` + Chemins des résultats + Durée calcul
+4. **Finalisation** : Mise à jour Postgres ➔ Statut `COMPLETED`.
 
 ---
 
 ## 📂 Structure du Projet
 
-Le backend est un **monolithe modulaire** (API et Worker partagent le même code mais s'exécutent séparément).
-
 ```bash
 smart-meeting-scribe/
-├── docker-compose.yml       # Orchestration complète
-├── backend-python/
-│   ├── Dockerfile           # Environnement unifié (Cuda 12.4)
-│   ├── requirements.txt     # Dépendances (Torch, Asyncpg, Taskiq...)
-│   └── app/
-│       ├── main.py          # Entrée API (FastAPI)
-│       ├── broker.py        # Config Taskiq (Redis)
-│       ├── core/
-│       │   ├── config.py    # Vars d'env
-│       │   ├── database.py  # Connexion Postgres (SQLAlchemy Async)
-│       │   └── models_db.py # Schémas des tables SQL
-│       ├── services/
-│       │   ├── storage.py   # 💾 Abstraction fsspec (Local/S3)
-│       │   ├── audio.py     # Traitement Audio
-│       │   ├── transcription.py # Whisper
-│       │   └── ...
-│       ├── api/             # Routes HTTP
-│       └── worker/
-│           └── tasks.py     # 👷 Logique du Worker (Pipeline IA)
-├── data_shared/             # Volume partagé (uploads, résultats)
-│   ├── uploads/             # Fichiers audio bruts
-│   └── results/             # 📁 JSON finaux par date/meeting_id
-└── frontend-nextjs/         # Interface utilisateur (à venir)
+├── 01-core/                 # Infrastructure de base (DB, Redis, S3, Qdrant)
+├── 02-workers/              # Worker IA (Pipeline Whisper/Pyannote)
+│   ├── app/                 # Code métier IA
+│   └── Dockerfile           # Image Cuda 12.4
+├── 03-interface/            # Application Web
+│   ├── backend/             # API FastAPI (Clean Architecture)
+│   │   └── app/
+│   │       ├── api/         # Routes v1 (Auth, Transcribe)
+│   │       ├── core/        # Sécurité & JWT
+│   │       ├── models/      # Tables SQLAlchemy (User, Meeting)
+│   │       └── services/    # Logique S3 & Taskiq
+│   └── frontend/            # Next.js 15 App
+├── manage.sh                # 🛠️ Script Master (Clean & Start)
+└── volumes/                 # Persistance locale des données
 ```
 
 ---
@@ -159,79 +112,48 @@ smart-meeting-scribe/
 ### Pré-requis
 
 - **Docker** & **Docker Compose**
-- **Drivers NVIDIA** & **NVIDIA Container Toolkit** installés sur l'hôte
+- **NVIDIA Container Toolkit** (pour le GPU)
+- Fichier `.env` configuré à la racine
 
-### Commandes
+### Commande Unique
+
+Le projet utilise un script d'automatisation qui nettoie, build et lance toutes les stacks :
 
 ```bash
-# 1. Construire et lancer la stack
-docker compose up -d --build
-
-# 2. Vérifier les logs du Worker (Pour voir l'IA travailler)
-docker compose logs -f worker
-
-# 3. Arrêter la stack proprement
-docker compose down
-```
-
-### Accès aux Services
-
-| Service | URL |
-|---------|-----|
-| **API Swagger** | http://localhost/docs |
-| **Administration DB** | Via pgAdmin (local) sur le port `5432` (User: `user` / Pass: `password`) |
-| **Traefik Dashboard** | http://localhost:8080 |
-
----
-
-## 💾 Gestion des Données (Persistance)
-
-Deux volumes Docker assurent la pérennité des données :
-
-| Volume | Chemin Conteneur | Description |
-|--------|------------------|-------------|
-| `postgres_data` | - | Base de données SQL (ne jamais supprimer sauf reset total) |
-| `./data_shared` | `/data` | Stockage des fichiers |
-
-### Structure du dossier `/data`
-
-```
-/data/
-├── uploads/              # Fichiers audio bruts uploadés
-└── results/              # � Résultats JSON structurés
-    └── YYYYMMDD/         # Par date (ex: 20260111)
-        └── <meeting_id>/ # Par réunion (UUID)
-            ├── transcription.json
-            ├── diarization.json
-            └── fusion.json    # ⭐ JSON final fusionné
+./manage.sh
 ```
 
 ---
 
-## ⚡ Stratégie d'Optimisation VRAM
+## 💾 Gestion des Données (Volumes)
 
-Pour tourner sur des GPU grand public (ex: RTX 4070 Ti - 12GB), nous appliquons une stratégie stricte de **Single Model Residency** :
+Les données sont centralisées dans le dossier `/volumes` pour une portabilité totale :
 
-1. ✅ Chargement du modèle A
-2. ⚙️ Inférence (Calcul)
-3. 🧹 Déchargement explicite :
-   - Suppression des pointeurs Python
-   - Appel du Garbage Collector (`gc.collect()`)
-   - Vidage du cache CUDA (`torch.cuda.empty_cache()`)
-4. ✅ Chargement du modèle B
-
-Ceci permet d'utiliser des modèles lourds (Whisper Large-v3 + Pyannote 3.1) sans provoquer d'erreurs **Out Of Memory (OOM)**.
+| Volume | Description |
+|--------|-------------|
+| `postgres_data` | Tables SQL des utilisateurs et historique des réunions. |
+| `minio_data` | Contenu brut du stockage S3 (audio et transcriptions). |
+| `huggingface_cache` | Poids des modèles IA téléchargés (Whisper/Pyannote). |
+| `qdrant_storage` | Index vectoriels pour la recherche sémantique. |
 
 ---
 
-## 📋 Roadmap
+## ⚡ Optimisation VRAM & Performance
 
-- [ ] Frontend NextJS avec visualisation des transcriptions
-- [ ] Export PDF des comptes-rendus
-- [ ] Résumé automatique via LLM local
-- [ ] Support multi-langues
-- [ ] Intégration S3/MinIO pour le stockage cloud
+Le système est conçu pour tourner sur une **RTX 4070 Ti (12GB)** :
+
+- **Single Model Residency** : Un seul modèle IA chargé à la fois en VRAM.
+- **Async Streaming** : L'API FastAPI streame les fichiers vers MinIO sans bufferisation mémoire excessive.
+- **PostgreSQL 16** : Optimisé pour les requêtes asynchrones via `asyncpg`.
 
 ---
 
-*Dernière mise à jour : Janvier 2026*
+## 📋 Roadmap V5+
+
+- [ ] Interface de Dashboard Next.js 15 sécurisée.
+- [ ] RAG (Retrieval Augmented Generation) : Chat avec vos réunions.
+- [ ] Export Word/PDF automatisé des comptes-rendus.
+
+---
+
+*Dernière mise à jour : 12 Janvier 2026*

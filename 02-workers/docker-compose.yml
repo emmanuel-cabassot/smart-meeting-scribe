@@ -1,0 +1,57 @@
+name: sms-workers
+
+services:
+  # ============================================================================
+  # WORKER IA (Whisper + Pyannote)
+  # Se connecte à Redis (Stack 1) pour recevoir les tâches
+  # Se connecte à MinIO (Stack 1) pour télécharger les fichiers
+  # ============================================================================
+  worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: smart-meeting-scribe-worker:v5
+    container_name: sms_worker
+    
+    # Commande de lancement (Taskiq Worker)
+    command: taskiq worker app.broker:broker --fs-discover --workers ${WORKER_CONCURRENCY:-1}
+    
+    # Volumes : On monte le code pour développer sans tout rebuilder
+    volumes:
+      - ./app:/code/app
+      # (Optionnel) Si on veut voir les fichiers temporaires pour debug
+      # - /tmp/sms_worker:/tmp 
+    
+    # Variables d'environnement (chargées depuis le .env racine)
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - HF_TOKEN=${HF_TOKEN}
+      # Optimisation PyTorch
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    
+    # Configuration GPU (Critique)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    # Réseau : Doit rejoindre celui créé par la Stack 1
+    networks:
+      - sms_network
+    
+    # Redémarrage automatique si crash (OOM, etc.)
+    restart: unless-stopped
+
+# ============================================================================
+# RÉSEAU EXTERNE
+# On se branche sur le réseau existant "sms_network" créé par 01-core
+# ============================================================================
+networks:
+  sms_network:
+    external: true

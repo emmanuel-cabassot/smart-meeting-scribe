@@ -1,0 +1,21 @@
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+pydantic[email]
+# --- Stockage S3 ---
+minio
+fsspec
+s3fs
+# --- Tâches ---
+taskiq
+taskiq-redis
+redis
+# --- Base de données ---
+sqlalchemy[asyncio]
+asyncpg
+# --- Sécurité (Auth) ---
+python-jose[cryptography]
+passlib[bcrypt]
+# FIX : On force une version compatible de bcrypt
+bcrypt==4.0.1

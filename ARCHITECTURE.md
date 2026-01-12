@@ -1,192 +1,132 @@
-# 🏗️ Architecture Technique : Smart Meeting Scribe V3.1
+# 🏗️ Architecture Technique : Smart Meeting Scribe V5.0
 
-- **Version** : 3.1 (Stack "Safe & Lean")
-- **Approche** : "Clean Host", "AI Native" & "Cloud Ready"
-- **Cible** : Déploiement On-Premise (Docker) sur GPU unique (Consumer Grade - ex: RTX 4070)
+> **Version** : 5.0 (Stack "Distribuée & S3-Ready")  
+> **Approche** : "Micro-services", "Cloud Native" & "GPU Optimized"  
+> **Cible** : Déploiement multi-conteneurs sur GPU unique (Consumer Grade - ex: RTX 4070 Ti)
 
-Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de performance GPU validée pour 2026.
+Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de persistance validée pour 2026.
 
 ---
 
 ## 1. Vue d'Ensemble & Philosophie
 
-Le passage à la V3.1 corrige les défauts de maintenance des files d'attente historiques et prépare le système à la scalabilité sans complexité inutile au démarrage.
+La V5 marque le passage d'une gestion de fichiers locale à une architecture **Object Storage (S3)** et une **Clean Architecture** backend. Elle résout les problématiques de partage de données entre conteneurs et prépare l'intégration du RAG.
 
-### Les 3 Piliers de l'Architecture
+### Les 3 Piliers de l'Architecture V5
 
 | Pilier | Description |
 |--------|-------------|
-| **Découplage "Async-Native"** | L'API délègue le travail via une stack asynchrone moderne (**Taskiq**) qui partage l'injection de dépendances avec FastAPI. Plus de "hacks" pour faire parler le Web et le Worker. |
-| **Stockage Abstrait (fsspec)** | Plutôt que de lier le code à un disque dur ou à AWS S3, nous utilisons une abstraction. Le code lit `protocol://file.wav`. Aujourd'hui c'est le disque NVMe (Rapide), demain c'est MinIO/S3 (Scalable), sans changer une ligne de code. |
-| **Sécurité GPU "Defensive"** | Le système utilise le mode **Spawn strict** et le Recyclage des Workers pour contrer les fuites de mémoire et les instabilités des drivers CUDA. |
+| **Clean Architecture (BFF)** | Backend structuré en couches (Endpoints/Services/Models). Le Backend agit comme un Backend-for-Frontend (BFF) sécurisant l'accès aux données par JWT. |
+| **Stockage S3 (MinIO)** | Migration vers l'API S3. Plus de volumes Docker complexes pour l'audio. L'API streame directement vers MinIO, et le Worker récupère les données via le réseau interne. |
+| **Persistance Relationnelle** | Utilisation de PostgreSQL 16 pour gérer le cycle de vie complet des meetings et la banque de voix utilisateur. |
 
 ---
 
 ## 2. La Stack Technologique (Détail)
 
-### 🌐 Couche Infrastructure & Réseau
+### 🌐 Couche Interface & Frontend
 
-| Composant | Rôle |
-|-----------|------|
-| **Docker Compose** | Orchestrateur unique. Tout le système démarre avec une seule commande. |
-| **Traefik V3** | Reverse Proxy & Load Balancer. Point d'entrée unique (Port 80). |
+| Composant | Rôle | Technologie |
+|-----------|------|-------------|
+| **Frontend** | Interface utilisateur moderne & réactive | Next.js 15 (React 19 / App Router) |
+| **Backend API** | Gateway sécurisée & Orchestrateur | FastAPI (Python 3.10) |
 
-### ⚡ Couche Application (Backend)
+### ⚡ Couche Communication & Tâches
 
 | Composant | Rôle | Performance |
 |-----------|------|-------------|
-| **FastAPI** | Guichetier. Reçoit le fichier, utilise fsspec pour le stocker, et pousse la tâche dans Redis. | Temps de réponse < 200ms |
-| **Taskiq** | Orchestrateur Asynchrone. Remplaçant moderne de Celery. | Intégration native AsyncIO |
-
-> [!TIP]
-> **Pourquoi Taskiq ?**
-> ARQ est en maintenance et Celery gère mal l'async moderne. Taskiq est le standard pour FastAPI, permettant de partager la connexion DB et la configuration entre l'API et le Worker.
+| **Taskiq** | Orchestrateur asynchrone partagé entre API et Worker | Latence de queue < 5ms |
+| **Redis 7** | Broker de messages pour Taskiq et cache temporaire | Mode persistant (AOF) |
 
 ### 🧠 Couche Intelligence (Worker IA)
 
-Le "Cerveau" du système. Isolé dans son propre processus (Spawn Mode).
-
 | Modèle | Fonction | Notes |
 |--------|----------|-------|
-| **Faster-Whisper** | Transcription audio → texte | Engine CTranslate2 (4x plus rapide que OpenAI) |
-| **Pyannote Audio 3.1** | Diarisation ("Qui parle quand ?") | Exécuté sur GPU avec gestion stricte de la mémoire |
-| **WeSpeaker** | Identification biométrique | Comparaison vectorielle (Embeddings) |
+| **Faster-Whisper** | Transcription audio → texte | Modèle Large-v3 (Engine CTranslate2) |
+| **Pyannote 3.1** | Diarisation ("Qui parle ?") | Optimisé pour le GPU avec vidage VRAM systématique |
+| **WeSpeaker** | Identification biométrique | Extraction d'embeddings pour banque de voix |
 
-### 💾 Couche Données & Stockage
+### 💾 Couche Données (Persistence)
 
-| Composant | Rôle |
-|-----------|------|
-| **Redis 7 (Alpine)** | Broker & Backend : Gère la file d'attente Taskiq et stocke les résultats temporaires. |
-| **PostgreSQL 18** | Mémoire à long terme (Utilisateurs, Métadonnées, Indexation). |
-| **fsspec (Abstraction)** | **Couche Logique** : Interface unique pour les fichiers.<br>• **Phase 1 (Actuelle)** : Backend LocalFileSystem (Performance NVMe).<br>• **Phase 2 (Future)** : Backend S3FileSystem (MinIO). |
+| Composant | Rôle | Technologie |
+|-----------|------|-------------|
+| **PostgreSQL 16** | Stockage structuré : Users, Meetings, Logs de tâches | SQLAlchemy Asyncpg (Driver haute performance) |
+| **MinIO** | Stockage Objet (S3) : Audios bruts & Résultats JSON | Haute disponibilité, compatible API S3 standard |
+| **Qdrant** | Base de données vectorielle | Prêt pour le RAG (Chat avec les réunions) |
 
 ---
 
-## 3. Flux de Données (Workflow)
+## 3. Flux de Données (Workflow V5)
 
-Voici le trajet exact d'une réunion avec la nouvelle abstraction.
+Voici le trajet d'une réunion au travers des micro-services.
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 Utilisateur
-    participant API as ⚡ FastAPI
-    participant Redis as 🔴 Redis
-    participant Worker as 🧠 Worker Taskiq
-    participant FS as 📂 fsspec (Storage)
-    participant DB as 🐘 PostgreSQL
+    participant User as 👤 Utilisateur (NextJS 15)
+    participant API as ⚡ FastAPI (JWT)
+    participant S3 as 🪣 MinIO (S3)
+    participant DB as 🐘 PostgreSQL 16
+    participant Redis as � Redis 7
+    participant Worker as 🧠 Worker IA
 
-    User->>API: POST reunion.mp3
-    API->>FS: Sauvegarde (via LocalFileSystem)
-    API->>DB: Création Job (Status: PENDING)
+    User->>API: POST /transcribe (Audio + JWT)
+    API->>S3: Stream Upload (Bucket: uploads)
+    API->>DB: INSERT Meeting (Status: PENDING)
     API->>Redis: Enqueue task "process_audio"
-    API-->>User: 202 Accepted - Task ID
+    API-->>User: 202 Accepted (Meeting ID)
     
-    Note over Redis: Tâche en attente...
+    Note over Worker: Watcher Redis...
     
     Worker->>Redis: Récupère la tâche
-    Worker->>DB: Update Status (PROCESSING)
-    Worker->>FS: Lecture fichier (Abstraction)
+    Worker->>DB: UPDATE Status (PROCESSING)
+    Worker->>S3: Download Audio
     
-    Note over Worker: 🛡️ Démarrage Processus (Spawn)
-    Note over Worker: Phase 1: Conversion & Diarisation
-    Note over Worker: Phase 2: Transcription & Identification
-    Note over Worker: 🧹 Nettoyage VRAM (Garbage Collect)
+    Note over Worker: 🧬 Inférence IA (Diarization -> Transcription)
     
-    Worker->>FS: Écrit result.json (Transcription/Diarisation/Fusion)
-    Worker->>DB: Sauvegarde Métadonnées & Status (COMPLETED)
+    Worker->>S3: Upload JSONs (Bucket: results)
+    Worker->>DB: UPDATE Meeting (Status: COMPLETED, text_result)
     Worker->>Redis: Task Success
-    
-    opt Recyclage
-        Note over Worker: ♻️ Restart Process (Mémoire Purge)
-    end
 ```
 
-### Étapes Clés V3.1
+---
 
-1. **Ingestion (FastAPI + fsspec)**
-   - FastAPI reçoit le stream.
-   - Il écrit via fsspec (agnostique du support physique).
-   - Il crée l'entrée dans PostgreSQL et envoie le message à Redis.
+## 4. Stratégie de Gestion GPU & VRAM
 
-2. **Traitement (Worker Taskiq)**
-   - Le Worker récupère le message.
-   - **Sécurité** : Il lance le traitement dans un contexte isolé.
-   - Il exécute le pipeline IA (Whisper/Pyannote) en mode "Single Model Residency".
+### Protocole de Sécurité CUDA V5
 
-3. **Finalisation & Recyclage**
-   - Les résultats sont sauvegardés via `storage.py`.
-   - La base de données est mise à jour.
-   - **Auto-Nettoyage** : Le Worker gère son cycle de vie pour éviter les fuites mémoire.
+| Règle | Implémentation |
+|-------|----------------|
+| **Single Model Residency** | Un seul modèle (Whisper ou Pyannote) réside en VRAM à l'instant T. |
+| **Hard Purge** | Après chaque phase : `torch.cuda.empty_cache()` + `gc.collect()`. |
+| **Isolated Execution** | Le Worker tourne dans un processus dédié, isolé de l'API web pour éviter les crashs en cascade. |
 
 ---
 
-## 4. Stratégie de Gestion GPU (VRAM)
+## 5. Structure du Projet (Tree-view simplifié)
 
-> [!CAUTION]
-> Point critique validé par l'audit pour la stabilité long terme.
-
-### Protocole de Sécurité CUDA
-
-| Règle | Implémentation V3.1 |
-|-------|---------------------|
-| **Spawn Context** | Utilisation forcée de `multiprocessing.set_start_method('spawn')`. Empêche les crashs liés au fork des drivers NVIDIA. |
-| **Concurrency = 1** | `max_async_tasks=1`. Une seule réunion à la fois par GPU. |
-| **Worker Recycling** | Le worker se recycle périodiquement pour vider la fragmentation mémoire. |
-| **Imports Explicites** | Pas d'auto-découverte "magique" des tâches (source de bugs avec le recyclage). Tout est importé explicitement. |
-
----
-
-## 5. Évolutions Futures (Ready)
-
-L'architecture V3.1 prépare le terrain pour la scalabilité sans dette technique.
-
-### 🔮 Roadmap Technique
-
-| Feature | Impact V3.1 |
-|---------|-------------|
-| **Passage Cluster** | Grâce à fsspec, basculer sur MinIO (S3) se fait en changeant 1 variable d'environnement (`STORAGE_PROTOCOL=s3`). Le code ne change pas. |
-| **RAG (Vector Search)** | L'intégration de Qdrant est triviale car Taskiq peut facilement lancer des sous-tâches d'embedding (BGE-M3) après la transcription. |
-| **Frontend Realtime** | Redis est déjà configuré pour le Pub/Sub. On pourra streamer la progression (SSE) directement au Frontend Next.js. |
-
----
-
-## 📊 Diagramme d'Architecture Globale
-
-```mermaid
-graph TB
-    subgraph Client
-        User["👤 Utilisateur (Next.js / Admin)"]
-    end
-    
-    subgraph Docker Host
-        Traefik["🔀 Traefik"]
-        
-        subgraph App Layer
-            API["⚡ FastAPI"]
-            Worker["🧠 Worker Taskiq (GPU)"]
-        end
-        
-        subgraph Data Layer
-            Redis[("🔴 Redis 7")]
-            Postgres[("🐘 PostgreSQL 18")]
-        end
-        
-        subgraph Storage Layer
-            FS["📂 Système de Fichiers<br>(Abstraction fsspec)"]
-        end
-    end
-    
-    User --> Traefik
-    Traefik --> API
-    
-    API -- "Push Task" --> Redis
-    API -- "Write" --> FS
-    API -- "Create Job" --> Postgres
-    
-    Worker -- "Pull Task" --> Redis
-    Worker -- "Read" --> FS
-    Worker -- "Update Job" --> Postgres
-    
-    style Worker fill:#f96,stroke:#333,stroke-width:2px
-    style FS fill:#69f,stroke:#333,stroke-dasharray: 5 5
 ```
+smart-meeting-scribe/
+├── 01-core/                # INFRA (DB, Redis, S3, Qdrant)
+├── 02-workers/             # COMPUTE (AI Engine)
+│   ├── app/                # Services IA (Audio, Transcription, Diarization)
+│   └── worker/             # Tasks Taskiq
+├── 03-interface/           # ACCESS (Web Layer)
+│   ├── backend/            # FastAPI (Auth JWT, S3 Services, SQL Models)
+│   └── frontend/           # Next.js 15 (UI / Dashboard)
+├── volumes/                # Persistance physique (S3, Postgres, Cache HF)
+└── manage.sh               # Script Master (Reset & Start)
+```
+
+---
+
+## 6. Évolutions (Roadmap V5+)
+
+- **Next.js 15 Dashboard** : Visualisation riche des segments audio et édition du texte en temps réel.
+
+- **RAG Integration** : Indexation automatique des transcriptions dans Qdrant pour poser des questions complexes sur l'historique des réunions.
+
+- **Multi-Tenant** : Isolation stricte des données par utilisateur via le `user_id` en base de données.
+
+---
+
+> **Dernière mise à jour** : Janvier 2026

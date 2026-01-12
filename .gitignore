@@ -1,5 +1,5 @@
 # --- Python & Environnements ---
-__pycache__
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -8,7 +8,6 @@ env/
 venv/
 .venv/
 pip-log.txt
-pip-delete-this-directory.txt
 
 # --- IDE & Système ---
 .idea/
@@ -19,21 +18,26 @@ pip-delete-this-directory.txt
 # --- Sécurité ---
 .env
 
-# --- Fichiers Temporaires du Script ---
-# On ignore les fichiers créés pendant le traitement (temp_...)
+# --- DOCKER V5 (CRITIQUE) ---
+# On ignore les données persistantes des bases et du stockage S3
+volumes/
+
+# --- Fichiers Temporaires & Médias ---
 temp_*
 *_converted.wav
-
-# --- Données Lourdes / Tests ---
-# On ne veut pas versionner tes vidéos de test
 *.mp3
 *.wav
 *.m4a
 *.mp4
 *.mkv
 
-# --- RÉSULTATS (Diarisation/Transcription) ---
-# On ignore le dossier où sont sauvegardés les JSON
+# --- ANCIENNES RÉFÉRENCES (V3) ---
 recordings/
-data_shared/results/
-data_shared/uploads/
+data_shared/
+_REFERENCE_V3_MONOLITHE/
+
+# --- DIVERS ---
+node_modules/
+.next/
+out/
+build/

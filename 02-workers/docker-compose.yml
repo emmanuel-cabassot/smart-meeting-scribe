@@ -25,7 +25,7 @@ services:
     # Variables d'environnement (chargées depuis le .env racine)
     environment:
       - REDIS_URL=redis://sms_redis:6379
-      - MINIO_ENDPOINT=http://sms_minio:9000
+      - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@sms_postgres:5432/${POSTGRES_DB}

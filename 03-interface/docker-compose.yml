@@ -6,30 +6,32 @@ services:
   # Rôle : Reçoit les fichiers et les stream vers MinIO
   # ============================================================================
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     image: smart-meeting-scribe-api:v5
     container_name: sms_api
-    
+
     # Variables d'environnement
     env_file:
       - ../.env
-    
+
     # Exposition interne (Traefik s'en occupera plus tard)
     ports:
       - "5000:8000"
-    
+
     volumes:
       - ./backend/app:/code/app
-    
+
     # Variables d'environnement partagées
     environment:
-      - REDIS_URL=${REDIS_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - REDIS_URL=redis://sms_redis:6379
+      - MINIO_ENDPOINT=sms_minio:9000
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-    
+      # URL Postgres avec le nom du conteneur sms_postgres
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@sms_postgres:5432/${POSTGRES_DB}
+
     networks:
       - sms_network
     restart: unless-stopped

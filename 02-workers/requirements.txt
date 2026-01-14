@@ -6,10 +6,13 @@
 torch
 torchvision
 torchaudio
-faster-whisper==1.1.0
+#faster-whisper==1.1.0
+faster-whisper==1.2.1
 pyannote.audio
 numpy
 scipy
+librosa
+soundfile
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. API & WEB (FASTAPI)
@@ -22,7 +25,7 @@ python-multipart==0.0.9
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. TASKIQ (ASYNC WORKER)
 # ══════════════════════════════════════════════════════════════════════════════
-taskiq==0.12.1
+taskiq[reload]==0.12.1
 taskiq-redis==1.2.1
 taskiq-fastapi==0.4.0
 redis==7.1.0

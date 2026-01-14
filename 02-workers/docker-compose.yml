@@ -7,22 +7,27 @@ services:
   # Se connecte à MinIO (Stack 1) pour télécharger les fichiers
   # ============================================================================
   worker:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     image: smart-meeting-scribe-worker:v5
     container_name: sms_worker
-    
+
+    # Charger les variables depuis le .env racine
+    env_file:
+      - ../.env
+
     # Commande de lancement (Taskiq Worker)
     command: taskiq worker app.broker:broker --fs-discover --workers ${WORKER_CONCURRENCY:-1}
-    
+
     # Volumes : On monte le code pour développer sans tout rebuilder
     volumes:
       - ./app:/code/app
+      - ./voice_bank:/code/voice_bank
       # (Optionnel) Si on veut voir les fichiers temporaires pour debug
       # - /tmp/sms_worker:/tmp 
-    
-    # Variables d'environnement (chargées depuis le .env racine)
+
+      # Variables d'environnement (chargées depuis le .env racine)
     environment:
       - REDIS_URL=redis://sms_redis:6379
       - MINIO_ENDPOINT=minio:9000
@@ -31,7 +36,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@sms_postgres:5432/${POSTGRES_DB}
       - HF_TOKEN=${HF_TOKEN}
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    
+
     # Configuration GPU (Critique)
     deploy:
       resources:
@@ -39,12 +44,12 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
-    
+              capabilities: [ gpu ]
+
     # Réseau : Doit rejoindre celui créé par la Stack 1
     networks:
       - sms_network
-    
+
     # Redémarrage automatique si crash (OOM, etc.)
     restart: unless-stopped
 

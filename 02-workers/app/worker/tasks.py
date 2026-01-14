@@ -14,7 +14,8 @@ from app.services.diarization import run_diarization
 from app.services.transcription import run_transcription
 from app.services.fusion import merge_transcription_diarization
 from app.services.storage import save_results
-from app.core.models import release_models
+from app.services.identification import get_voice_bank_embeddings, identify_speaker
+from app.core.models import release_models, load_embedding_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -72,6 +73,59 @@ async def process_transcription_full(file_path: str, meeting_id: str):
         logger.info(f"👥 [JOB {meeting_id}] Étape 2 : Diarisation...")
         diarization_annotation = run_diarization(audio_wav)
         
+        # ======================================================================
+        # ÉTAPE 2.5 : IDENTIFICATION DES LOCUTEURS (GPU - WeSpeaker)
+        # ======================================================================
+        logger.info(f"🎯 [JOB {meeting_id}] Étape 2.5 : Identification des locuteurs...")
+        
+        # Charger la banque de voix
+        bank_embeddings = get_voice_bank_embeddings()
+        
+        if bank_embeddings:
+            # Mapper les speakers détectés vers des noms connus
+            embedding_model = load_embedding_model()
+            speaker_mapping = {}  # Ex: {"SPEAKER_00": "Emmanuel", "SPEAKER_01": "Marie"}
+            
+            for segment, _, speaker in diarization_annotation.itertracks(yield_label=True):
+                if speaker not in speaker_mapping:
+                    # Extraire un segment audio pour ce speaker
+                    # On prend le premier segment de chaque speaker pour l'identification
+                    # TODO: Améliorer en utilisant plusieurs segments
+                    try:
+                        import librosa
+                        audio_segment, sr = librosa.load(
+                            audio_wav, 
+                            sr=16000, 
+                            offset=segment.start, 
+                            duration=min(segment.duration, 5.0)  # Max 5 secondes
+                        )
+                        # Sauvegarder temporairement le segment
+                        import soundfile as sf
+                        temp_segment_path = f"/tmp/{meeting_id}_speaker_{speaker}.wav"
+                        sf.write(temp_segment_path, audio_segment, sr)
+                        
+                        # Calculer l'embedding et identifier
+                        unknown_emb = embedding_model(temp_segment_path)
+                        identified_name, score = identify_speaker(unknown_emb, bank_embeddings)
+                        
+                        if identified_name:
+                            speaker_mapping[speaker] = identified_name
+                            logger.info(f"   ✅ {speaker} -> {identified_name} (score: {score:.2f})")
+                        else:
+                            speaker_mapping[speaker] = speaker  # Garder le label original
+                            logger.info(f"   ❓ {speaker} non reconnu (score: {score:.2f})")
+                        
+                        # Nettoyer le fichier temporaire
+                        os.remove(temp_segment_path)
+                    except Exception as e:
+                        logger.warning(f"   ⚠️ Erreur identification {speaker}: {e}")
+                        speaker_mapping[speaker] = speaker
+            
+            logger.info(f"   📋 Mapping final: {speaker_mapping}")
+        else:
+            logger.info("   ℹ️ Pas de voice bank, utilisation des labels par défaut")
+            speaker_mapping = None
+        
         # Nettoyage VRAM intermédiaire
         release_models() 
 
@@ -86,7 +140,7 @@ async def process_transcription_full(file_path: str, meeting_id: str):
         # ÉTAPE 4 : FUSION & SAUVEGARDE (S3)
         # ======================================================================
         logger.info(f"🔗 [JOB {meeting_id}] Étape 4 : Fusion et Upload S3...")
-        final_data = merge_transcription_diarization(whisper_segments, diarization_annotation)
+        final_data = merge_transcription_diarization(whisper_segments, diarization_annotation, speaker_mapping)
 
         # Sauvegarde via le nouveau storage.py (qui écrit directement sur MinIO)
         s3_result_path = save_results(

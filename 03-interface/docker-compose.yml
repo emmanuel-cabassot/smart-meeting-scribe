@@ -36,6 +36,28 @@ services:
       - sms_network
     restart: unless-stopped
 
+  # ============================================================================
+  # FRONTEND (Next.js 16)
+  # Rôle : Interface utilisateur
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend-nextjs
+      dockerfile: Dockerfile
+    container_name: sms_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      # URL pour que le SERVEUR Next parle à l'API (Réseau Docker)
+      - API_INTERNAL_URL=http://sms_api:8000
+      # URL pour que le NAVIGATEUR parle à l'API (Publique)
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - sms_network
+
 # ============================================================================
 # RÉSEAU EXTERNE
 # ============================================================================

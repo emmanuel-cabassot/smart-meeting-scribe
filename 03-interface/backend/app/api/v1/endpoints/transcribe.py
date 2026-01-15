@@ -1,6 +1,8 @@
 import uuid
+import json
 import boto3
 from botocore.exceptions import ClientError
+from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.broker import broker, kicker
 from app.core.config import settings
@@ -87,24 +89,82 @@ async def get_task_status(task_id: str):
     """
     Permet au Frontend de demander : 'C'est fini ?'
     Interroge Redis pour voir l'état de la tâche.
+    Si terminée, va chercher le JSON fusion.json dans S3 et le renvoie.
     """
     try:
-        result = broker.result_backend.get_result(task_id)
-        is_ready = await result.is_ready()
+        # Taskiq RedisAsyncResultBackend : get_result retourne un TaskiqResult
+        taskiq_result = await broker.result_backend.get_result(task_id)
         
-        if is_ready:
-            task_result = await result.get_result()
+        # Si pas de résultat, la tâche est encore en cours
+        if taskiq_result is None:
+            return {
+                "status": "processing",
+                "task_id": task_id,
+                "message": "La transcription est en cours..."
+            }
+        
+        # Essaye d'accéder au résultat (peut lever une exception si pas prêt)
+        try:
+            task_result = taskiq_result.return_value
+        except (AttributeError, Exception):
+            # Pas encore prêt
+            return {
+                "status": "processing",
+                "task_id": task_id,
+                "message": "La transcription est en cours..."
+            }
+        
+        # Si le résultat est None, encore en cours
+        if task_result is None:
+            return {
+                "status": "processing",
+                "task_id": task_id,
+                "message": "La transcription est en cours..."
+            }
+        # task_result = {"status": "success", "meeting_id": "...", "result_path": "s3://processed/..."}
+        
+        # Vérifie si c'est une erreur du worker
+        if task_result.get("status") == "error":
+            return {
+                "status": "error",
+                "task_id": task_id,
+                "message": task_result.get("message", "Erreur inconnue")
+            }
+        
+        # Essaye de récupérer le JSON depuis S3
+        try:
+            s3_folder_url = task_result.get("result_path")
+            
+            if not s3_folder_url:
+                return {"status": "completed", "task_id": task_id, "result": []}
+            
+            # Parse l'URL s3://bucket/dossier
+            parsed = urlparse(s3_folder_url)
+            bucket_name = parsed.netloc
+            folder_path = parsed.path.lstrip('/')
+            
+            # Construit le chemin vers fusion.json
+            file_key = f"{folder_path}/fusion.json"
+            
+            print(f"📂 [API] Lecture S3: {bucket_name}/{file_key}")
+            
+            # Télécharge le contenu JSON
+            s3_response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+            json_content = json.loads(s3_response['Body'].read().decode('utf-8'))
+            
             return {
                 "status": "completed",
                 "task_id": task_id,
-                "result": task_result
+                "result": json_content  # Array direct [{speaker, start, end, text}, ...]
             }
-        
-        return {
-            "status": "processing",
-            "task_id": task_id,
-            "message": "La transcription est en cours..."
-        }
+            
+        except Exception as e:
+            print(f"⚠️ [API] Erreur récupération S3 ({task_id}): {e}")
+            return {
+                "status": "error",
+                "task_id": task_id,
+                "message": "Fichier résultat introuvable dans S3"
+            }
         
     except Exception as e:
         print(f"❌ [API] Erreur status : {str(e)}")

@@ -13,9 +13,9 @@ services:
     image: smart-meeting-scribe-worker:v5
     container_name: sms_worker
 
-    # Charger les variables depuis le .env racine
+    # Charger les variables depuis le .env local
     env_file:
-      - ../.env
+      - .env
 
     # Commande de lancement (Taskiq Worker)
     command: taskiq worker app.broker:broker --fs-discover --workers ${WORKER_CONCURRENCY:-1}

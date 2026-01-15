@@ -2,8 +2,8 @@ import asyncio
 import logging
 import json
 import os
-import shutil
-import fsspec
+import boto3
+from urllib.parse import urlparse
 from pathlib import Path
 from app.broker import broker
 from app.core.config import settings
@@ -20,6 +20,39 @@ from app.core.models import release_models, load_embedding_model
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- CONFIGURATION BOTO3 (Worker) ---
+def get_s3_client():
+    """Crée un client S3 boto3 configuré pour MinIO."""
+    return boto3.client(
+        "s3",
+        endpoint_url=f"http://{settings.MINIO_ENDPOINT}",
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY
+    )
+
+
+def smart_download(remote_path: str, local_dest: str):
+    """
+    Télécharge un fichier depuis S3 via Boto3.
+    Gère les URL s3://bucket/key
+    """
+    if remote_path.startswith("s3://"):
+        logger.info(f"⬇️ [Boto3] Téléchargement de {remote_path}...")
+        
+        parsed = urlparse(remote_path)
+        bucket_name = parsed.netloc
+        object_key = parsed.path.lstrip('/')
+        
+        s3 = get_s3_client()
+        s3.download_file(bucket_name, object_key, local_dest)
+        
+        logger.info(f"   ✅ Téléchargé vers {local_dest}")
+    else:
+        # Fallback pour tests locaux
+        import shutil
+        shutil.copy(remote_path, local_dest)
+
+
 @broker.task(task_name="process_transcription_full")
 async def process_transcription_full(file_path: str, meeting_id: str):
     """
@@ -34,37 +67,20 @@ async def process_transcription_full(file_path: str, meeting_id: str):
     audio_wav = None
     
     try:
-        logger.info(f"🚀 [JOB {meeting_id}] Démarrage Worker V5 (MinIO Native)")
+        logger.info(f"🚀 [JOB {meeting_id}] Démarrage Worker V5 (Boto3 Native)")
         logger.info(f"   📥 Source : {file_path}")
 
         # ======================================================================
         # ÉTAPE 0 : TÉLÉCHARGEMENT DEPUIS MINIO (S3 -> LOCAL)
         # ======================================================================
-        # On définit les options de connexion S3
-        storage_options = {
-            "endpoint_url": f"http://{settings.MINIO_ENDPOINT}",
-            "key": settings.MINIO_ACCESS_KEY,
-            "secret": settings.MINIO_SECRET_KEY
-        }
-        
-        # On crée un chemin temporaire local pour travailler
         filename = Path(file_path).name
         local_input_path = f"/tmp/{meeting_id}_{filename}"
         
-        logger.info(f"   ⬇️ Téléchargement vers {local_input_path}...")
-        
-        # Téléchargement via fsspec
-        # On force le protocole "s3://" si absent
-        s3_path = file_path if file_path.startswith("s3://") else f"s3://{file_path}"
-        
-        with fsspec.open(s3_path, "rb", **storage_options) as source_f:
-            with open(local_input_path, "wb") as dest_f:
-                shutil.copyfileobj(source_f, dest_f)
+        smart_download(file_path, local_input_path)
 
         # ======================================================================
         # ÉTAPE 1 : CONVERSION AUDIO (CPU)
         # ======================================================================
-        # FFmpeg travaille maintenant sur le fichier local téléchargé
         audio_wav = convert_to_wav(local_input_path)
         
         # ======================================================================

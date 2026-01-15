@@ -31,12 +31,9 @@ taskiq-fastapi==0.4.0
 redis==7.1.0
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. PERSISTANCE & STOCKAGE (V5)
+# 4. PERSISTANCE & STOCKAGE (V5 - Boto3)
 # ══════════════════════════════════════════════════════════════════════════════
-# Abstraction du système de fichiers
-fsspec==2025.12.0
-# 👇 AJOUT CRITIQUE POUR MINIO (V5) 👇
-s3fs==2025.12.0
+boto3
 python-dotenv
 
 # Base de données (Async)

@@ -1,11 +1,22 @@
 import json
-import fsspec
+import boto3
 from datetime import datetime
 from app.core.config import settings
 
+
+def get_s3_client():
+    """Crée un client S3 boto3 configuré pour MinIO."""
+    return boto3.client(
+        "s3",
+        endpoint_url=f"http://{settings.MINIO_ENDPOINT}",
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY
+    )
+
+
 def save_results(clean_name, annotation, raw_segments, fusion_segments):
     """
-    Sauvegarde les résultats (JSON) sur MinIO (S3) via fsspec.
+    Sauvegarde les résultats (JSON) sur MinIO (S3) via boto3.
     Plus de disque dur local !
     
     Structure S3 : s3://processed/YYYYMMDD_HHMMSS_nomdufichier/
@@ -13,21 +24,13 @@ def save_results(clean_name, annotation, raw_segments, fusion_segments):
     
     # 1. Construction du chemin S3 unique (Timestamp)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_filename = clean_name.split('.')[0] # On enlève l'extension .wav/.mp3
+    safe_filename = clean_name.split('.')[0]  # On enlève l'extension .wav/.mp3
     folder_name = f"{timestamp}_{safe_filename}"
     
     # Chemin de base : s3://processed/20260112_...
-    base_path = f"{settings.STORAGE_PROTOCOL}://{settings.MINIO_BUCKET_RESULTS}/{folder_name}"
+    base_path = f"s3://{settings.MINIO_BUCKET_RESULTS}/{folder_name}"
 
-    # 2. Configuration de la connexion S3 (MinIO)
-    # On passe les credentials définis dans config.py
-    storage_options = {
-        "endpoint_url": f"http://{settings.MINIO_ENDPOINT}",
-        "key": settings.MINIO_ACCESS_KEY,
-        "secret": settings.MINIO_SECRET_KEY
-    }
-
-    # 3. Préparation des données (Logique Métier inchangée V3)
+    # 2. Préparation des données (Logique Métier inchangée V3)
     diarization_data = []
     if hasattr(annotation, 'itertracks'):
         for turn, _, speaker in annotation.itertracks(yield_label=True):
@@ -42,15 +45,21 @@ def save_results(clean_name, annotation, raw_segments, fusion_segments):
         for s in raw_segments
     ]
 
+    # 3. Client S3
+    s3 = get_s3_client()
+
     # 4. Fonction utilitaire d'écriture S3
     def write_json_to_s3(filename, data):
-        full_path = f"{base_path}/{filename}"
-        print(f"   💾 Upload S3 vers : {full_path}")
+        object_key = f"{folder_name}/{filename}"
+        print(f"   💾 Upload S3 vers : s3://{settings.MINIO_BUCKET_RESULTS}/{object_key}")
         
-        # La magie fsspec : on ouvre une connexion réseau comme un fichier local
         try:
-            with fsspec.open(full_path, "w", encoding="utf-8", **storage_options) as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            s3.put_object(
+                Bucket=settings.MINIO_BUCKET_RESULTS,
+                Key=object_key,
+                Body=json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8'),
+                ContentType='application/json'
+            )
         except Exception as e:
             print(f"   ❌ Erreur écriture S3 ({filename}): {str(e)}")
             raise e

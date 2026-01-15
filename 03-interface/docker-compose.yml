@@ -14,7 +14,7 @@ services:
 
     # Variables d'environnement
     env_file:
-      - ../.env
+      - .env
 
     # Exposition interne (Traefik s'en occupera plus tard)
     ports:

@@ -27,7 +27,6 @@ except ClientError:
     pass  # Bucket existe déjà
 
 
-@router.post("")
 @router.post("/")
 async def start_transcription(file: UploadFile = File(...)):
     """

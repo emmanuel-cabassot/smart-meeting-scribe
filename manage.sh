@@ -8,11 +8,12 @@ echo -e "${RED}🧹 1. Nettoyage des containers et volumes...${NC}"
 docker compose -f 01-core/docker-compose.yml down -v
 docker compose -f 02-workers/docker-compose.yml down -v
 docker compose -f 03-interface/docker-compose.yml down -v
+docker builder prune -f 2>/dev/null
 
 echo -e "${BLUE}🚀 2. Lancement synchronisé des stacks...${NC}"
-docker compose -f 01-core/docker-compose.yml --env-file .env up -d
-docker compose -f 02-workers/docker-compose.yml --env-file .env up -d
-docker compose -f 03-interface/docker-compose.yml --env-file .env up -d --build
+docker compose -f 01-core/docker-compose.yml up -d
+docker compose -f 02-workers/docker-compose.yml up -d
+docker compose -f 03-interface/docker-compose.yml up -d --build
 
 echo -e "${GREEN}✅ 3. Tout est en ligne. Connexion aux logs de l'API...${NC}"
 docker logs -f sms_api

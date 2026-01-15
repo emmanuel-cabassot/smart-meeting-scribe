@@ -22,8 +22,9 @@ export default function VideoUpload({ onUploadSuccess }: VideoUploadProps) {
     const [file, setFile] = useState<File | null>(null);
     const { upload, progress, status, error, reset } = useXHRUpload();
 
-    // URL directe vers FastAPI (bypass Next.js proxy pour éviter la limite 10MB)
-    const UPLOAD_URL = "http://localhost:5000/api/v1/process/";
+    // URL de l'API (configurable via env, défaut: localhost:5000)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const UPLOAD_URL = `${API_URL}/api/v1/process/`;
 
     const onDrop = useCallback(
         (acceptedFiles: File[]) => {

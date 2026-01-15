@@ -1,34 +1,85 @@
-# 📑 Docker Cheat Sheet — Smart Meeting Scribe V5
+# 🐳 Docker Cheat Sheet — Smart Meeting Scribe V5.1
 
-## 🏗️ Services & Conteneurs Clés
+## 🏗️ Architecture Multi-Stacks
 
-| Service | Nom du conteneur | Port |
-|---------|------------------|------|
-| API (FastAPI) | `sms_api` | 5000 |
-| Worker (IA) | `sms_worker` | - |
-| Frontend | `sms_frontend` | 3000 |
-| Base de données | `sms_postgres` | 5432 |
-| Stockage S3 | `sms_minio` | 9001 (Console) |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          RÉSEAU : sms_network                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────── 01-core ───────────────┐                                  │
+│  │                                       │                                  │
+│  │  📦 sms_postgres   (5432)             │                                  │
+│  │  📦 sms_redis                         │                                  │
+│  │  📦 sms_minio      (9000, 9001)       │                                  │
+│  │  📦 sms_qdrant     (6333)             │                                  │
+│  │  📦 sms_tei        (8081)             │                                  │
+│  │                                       │                                  │
+│  └───────────────────────────────────────┘                                  │
+│                                                                             │
+│  ┌─────────────── 02-workers ────────────┐                                  │
+│  │                                       │                                  │
+│  │  📦 sms_worker     (GPU - CUDA 12.4)  │                                  │
+│  │     ├─ Pyannote (Diarisation)         │                                  │
+│  │     ├─ WeSpeaker (Identification)     │                                  │
+│  │     └─ Whisper (Transcription)        │                                  │
+│  │                                       │                                  │
+│  └───────────────────────────────────────┘                                  │
+│                                                                             │
+│  ┌─────────────── 03-interface ──────────┐                                  │
+│  │                                       │                                  │
+│  │  📦 sms_api        (5000 → 8000)      │                                  │
+│  │     └─ FastAPI + boto3                │                                  │
+│  │                                       │                                  │
+│  │  📦 sms_frontend   (3000)             │                                  │
+│  │     └─ Next.js 16 (Standalone)        │                                  │
+│  │                                       │                                  │
+│  └───────────────────────────────────────┘                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## � Commandes "Master" (Le raccourci V5)
+## 📦 Containers & Services
 
-Utilise le script à la racine pour un cycle propre (Clean -> Build -> Start -> Logs).
+| Stack | Container | Image | Ports | Rôle |
+|-------|-----------|-------|-------|------|
+| **01-core** | `sms_postgres` | postgres:15-alpine | 5432 | Base de données SQL |
+| | `sms_redis` | redis:7-alpine | 6379 | Broker de tâches (Taskiq) |
+| | `sms_minio` | minio/minio:latest | 9000, 9001 | Stockage S3 (audio + résultats) |
+| | `sms_qdrant` | qdrant/qdrant:v1.7.4 | 6333 | Vector DB (futur RAG) |
+| | `sms_tei` | text-embeddings-inference | 8081 | Embeddings CPU |
+| **02-workers** | `sms_worker` | smart-meeting-scribe-worker:v5 | - | Pipeline IA (GPU) |
+| **03-interface** | `sms_api` | smart-meeting-scribe-api:v5 | 5000 | API Gateway (FastAPI) |
+| | `sms_frontend` | sms-interface-frontend | 3000 | UI (Next.js 16) |
+
+---
+
+## 🚀 Commande Master
 
 ```bash
 ./manage.sh
 ```
 
+Ce script :
+1. 🧹 Nettoie les containers et volumes
+2. 🚀 Lance 01-core → 02-workers → 03-interface
+3. 📋 Affiche les logs de l'API
+
 ---
 
-## 🟢 Démarrage & Mise à jour (Manuel)
-
-Si tu veux lancer une stack spécifique sans tout couper :
+## 🟢 Démarrage Manuel (par stack)
 
 ```bash
-# Lancer l'interface et reconstruire
-docker compose -f 03-interface/docker-compose.yml --env-file .env up -d --build
+# Infrastructure
+docker compose -f 01-core/docker-compose.yml up -d
+
+# Worker GPU
+docker compose -f 02-workers/docker-compose.yml up -d
+
+# Interface (avec rebuild)
+docker compose -f 03-interface/docker-compose.yml up -d --build
 ```
 
 ---
@@ -36,75 +87,124 @@ docker compose -f 03-interface/docker-compose.yml --env-file .env up -d --build
 ## 🟡 Arrêt & Nettoyage
 
 ```bash
-# Arrêter proprement la stack interface
+# Arrêter une stack
 docker compose -f 03-interface/docker-compose.yml down
 
-# Arrêt total avec suppression des images locales et des volumes (Reset)
+# Arrêt total + suppression volumes
+docker compose -f 03-interface/docker-compose.yml down -v
+
+# Reset complet (images incluses)
 docker compose -f 03-interface/docker-compose.yml down -v --rmi local
 ```
 
 ---
 
-## 🟣 Surveillance (Logs)
+## 📋 Logs
 
 ```bash
-# Voir les logs de l'API en temps réel
+# API Gateway
 docker logs -f sms_api
 
-# Voir les logs du Worker (IA) pour suivre la transcription
+# Worker IA (transcription)
 docker logs -f sms_worker
+
+# Frontend Next.js
+docker logs -f sms_frontend
+
+# Tous les logs MinIO
+docker logs -f sms_minio
 ```
 
 ---
 
-## 🟨 Exécution (Shell interne)
-
-Entrer dans le conteneur pour inspecter les fichiers ou tester du code Python :
+## 🔧 Shell & Debug
 
 ```bash
-# Dans l'API
+# Entrer dans un container
 docker exec -it sms_api /bin/bash
-
-# Dans le Worker
 docker exec -it sms_worker /bin/bash
+
+# Vérifier le GPU
+docker exec -it sms_worker nvidia-smi
+
+# Vérifier Redis
+docker exec -it sms_redis redis-cli ping
 ```
 
 ---
 
-## � Inspection du Système
+## 📊 Inspection
 
 ```bash
-# Voir les conteneurs actifs (Ports, Status)
+# Containers actifs
 docker ps
 
-# Voir tous les conteneurs (même arrêtés)
+# Tous les containers
 docker ps -a
 
-# Voir les images stockées
+# Images
 docker images
 
-# Voir l'utilisation des ressources (CPU/RAM/GPU)
+# Ressources (CPU/RAM/GPU)
 docker stats
+
+# Réseaux
+docker network ls
 ```
 
 ---
 
-## 🧹 Maintenance Rapide
+## 🧹 Maintenance
 
 ```bash
-# Nettoyer les conteneurs arrêtés et images orphelines
+# Nettoyer orphelins
 docker system prune -f
 
-# Nettoyer TOUT (y compris les volumes non utilisés - Attention !)
+# Nettoyage total (⚠️ supprime tout)
 docker system prune -a --volumes
 ```
 
 ---
 
-## � Rappel Utile
+## 🌐 URLs d'accès
 
-Pour le GPU, comme tu utilises `nvidia-smi` à l'intérieur du worker, tu peux tester la visibilité du GPU directement avec :
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| API Docs (Swagger) | http://localhost:5000/docs |
+| MinIO Console | http://localhost:9001 |
+| Qdrant Dashboard | http://localhost:6333/dashboard |
 
-```bash
-docker exec -it sms_worker nvidia-smi
+---
+
+## 📁 Volumes Persistants
+
+| Volume | Chemin | Contenu |
+|--------|--------|---------|
+| `postgres_data` | `./volumes/postgres_data` | Tables SQL |
+| `redis_data` | `./volumes/redis_data` | Cache Redis |
+| `minio_data` | `./volumes/minio_data` | Fichiers S3 |
+| `qdrant_storage` | `./volumes/qdrant_storage` | Vecteurs |
+| `huggingface_cache` | `./volumes/huggingface_cache` | Modèles IA |
+
+---
+
+## ⚙️ Variables d'Environnement
+
+Chaque stack a son propre `.env` :
+
 ```
+01-core/.env
+02-workers/.env
+03-interface/.env
+```
+
+Variables clés :
+- `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`
+- `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`
+- `HF_TOKEN` (HuggingFace pour Pyannote)
+- `REDIS_URL`
+
+---
+
+*Dernière mise à jour : 16 Janvier 2026*

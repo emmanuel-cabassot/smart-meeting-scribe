@@ -35,9 +35,9 @@ export function usePolling() {
 
         const checkStatus = async () => {
             try {
-                // Appel au proxy Next.js → FastAPI
-                // /api/python/process/status/{id} → /api/v1/process/status/{id}
-                const res = await fetch(`/api/python/process/status/${taskId}`);
+                // URL de l'API (configurable via env)
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+                const res = await fetch(`${API_URL}/api/v1/process/status/${taskId}`);
                 if (!res.ok) throw new Error("Erreur serveur");
 
                 const json: PollingResponse = await res.json();

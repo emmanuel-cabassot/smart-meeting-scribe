@@ -3,10 +3,8 @@ uvicorn[standard]
 python-multipart
 requests
 pydantic[email]
-# --- Stockage S3 ---
-minio
-fsspec
-s3fs
+# --- Stockage S3 (Boto3) ---
+boto3
 # --- Tâches ---
 taskiq
 taskiq-redis

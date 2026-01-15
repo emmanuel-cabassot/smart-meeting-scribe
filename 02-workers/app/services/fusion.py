@@ -20,12 +20,24 @@ def assign_speaker(start, end, annotation):
             
     return assigned_speaker
 
-def merge_transcription_diarization(segments, annotation):
-    """Fusionne la liste des segments Whisper avec l'annotation Pyannote."""
+def merge_transcription_diarization(segments, annotation, speaker_mapping=None):
+    """
+    Fusionne la liste des segments Whisper avec l'annotation Pyannote.
+    
+    Args:
+        segments: Liste des segments Whisper
+        annotation: Annotation de diarisation Pyannote
+        speaker_mapping: Dictionnaire optionnel {SPEAKER_00: "Emmanuel", ...}
+    """
     formatted_segments = []
     
     for segment in segments:
         speaker = assign_speaker(segment.start, segment.end, annotation)
+        
+        # Appliquer le mapping si disponible
+        if speaker_mapping and speaker in speaker_mapping:
+            speaker = speaker_mapping[speaker]
+        
         formatted_segments.append({
             "start": round(segment.start, 2),
             "end": round(segment.end, 2),

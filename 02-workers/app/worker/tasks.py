@@ -2,8 +2,8 @@ import asyncio
 import logging
 import json
 import os
-import shutil
-import fsspec
+import boto3
+from urllib.parse import urlparse
 from pathlib import Path
 from app.broker import broker
 from app.core.config import settings
@@ -14,10 +14,44 @@ from app.services.diarization import run_diarization
 from app.services.transcription import run_transcription
 from app.services.fusion import merge_transcription_diarization
 from app.services.storage import save_results
-from app.core.models import release_models
+from app.services.identification import get_voice_bank_embeddings, identify_speaker
+from app.core.models import release_models, load_embedding_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- CONFIGURATION BOTO3 (Worker) ---
+def get_s3_client():
+    """Crée un client S3 boto3 configuré pour MinIO."""
+    return boto3.client(
+        "s3",
+        endpoint_url=f"http://{settings.MINIO_ENDPOINT}",
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY
+    )
+
+
+def smart_download(remote_path: str, local_dest: str):
+    """
+    Télécharge un fichier depuis S3 via Boto3.
+    Gère les URL s3://bucket/key
+    """
+    if remote_path.startswith("s3://"):
+        logger.info(f"⬇️ [Boto3] Téléchargement de {remote_path}...")
+        
+        parsed = urlparse(remote_path)
+        bucket_name = parsed.netloc
+        object_key = parsed.path.lstrip('/')
+        
+        s3 = get_s3_client()
+        s3.download_file(bucket_name, object_key, local_dest)
+        
+        logger.info(f"   ✅ Téléchargé vers {local_dest}")
+    else:
+        # Fallback pour tests locaux
+        import shutil
+        shutil.copy(remote_path, local_dest)
+
 
 @broker.task(task_name="process_transcription_full")
 async def process_transcription_full(file_path: str, meeting_id: str):
@@ -33,37 +67,20 @@ async def process_transcription_full(file_path: str, meeting_id: str):
     audio_wav = None
     
     try:
-        logger.info(f"🚀 [JOB {meeting_id}] Démarrage Worker V5 (MinIO Native)")
+        logger.info(f"🚀 [JOB {meeting_id}] Démarrage Worker V5 (Boto3 Native)")
         logger.info(f"   📥 Source : {file_path}")
 
         # ======================================================================
         # ÉTAPE 0 : TÉLÉCHARGEMENT DEPUIS MINIO (S3 -> LOCAL)
         # ======================================================================
-        # On définit les options de connexion S3
-        storage_options = {
-            "endpoint_url": f"http://{settings.MINIO_ENDPOINT}",
-            "key": settings.MINIO_ACCESS_KEY,
-            "secret": settings.MINIO_SECRET_KEY
-        }
-        
-        # On crée un chemin temporaire local pour travailler
         filename = Path(file_path).name
         local_input_path = f"/tmp/{meeting_id}_{filename}"
         
-        logger.info(f"   ⬇️ Téléchargement vers {local_input_path}...")
-        
-        # Téléchargement via fsspec
-        # On force le protocole "s3://" si absent
-        s3_path = file_path if file_path.startswith("s3://") else f"s3://{file_path}"
-        
-        with fsspec.open(s3_path, "rb", **storage_options) as source_f:
-            with open(local_input_path, "wb") as dest_f:
-                shutil.copyfileobj(source_f, dest_f)
+        smart_download(file_path, local_input_path)
 
         # ======================================================================
         # ÉTAPE 1 : CONVERSION AUDIO (CPU)
         # ======================================================================
-        # FFmpeg travaille maintenant sur le fichier local téléchargé
         audio_wav = convert_to_wav(local_input_path)
         
         # ======================================================================
@@ -71,6 +88,59 @@ async def process_transcription_full(file_path: str, meeting_id: str):
         # ======================================================================
         logger.info(f"👥 [JOB {meeting_id}] Étape 2 : Diarisation...")
         diarization_annotation = run_diarization(audio_wav)
+        
+        # ======================================================================
+        # ÉTAPE 2.5 : IDENTIFICATION DES LOCUTEURS (GPU - WeSpeaker)
+        # ======================================================================
+        logger.info(f"🎯 [JOB {meeting_id}] Étape 2.5 : Identification des locuteurs...")
+        
+        # Charger la banque de voix
+        bank_embeddings = get_voice_bank_embeddings()
+        
+        if bank_embeddings:
+            # Mapper les speakers détectés vers des noms connus
+            embedding_model = load_embedding_model()
+            speaker_mapping = {}  # Ex: {"SPEAKER_00": "Emmanuel", "SPEAKER_01": "Marie"}
+            
+            for segment, _, speaker in diarization_annotation.itertracks(yield_label=True):
+                if speaker not in speaker_mapping:
+                    # Extraire un segment audio pour ce speaker
+                    # On prend le premier segment de chaque speaker pour l'identification
+                    # TODO: Améliorer en utilisant plusieurs segments
+                    try:
+                        import librosa
+                        audio_segment, sr = librosa.load(
+                            audio_wav, 
+                            sr=16000, 
+                            offset=segment.start, 
+                            duration=min(segment.duration, 5.0)  # Max 5 secondes
+                        )
+                        # Sauvegarder temporairement le segment
+                        import soundfile as sf
+                        temp_segment_path = f"/tmp/{meeting_id}_speaker_{speaker}.wav"
+                        sf.write(temp_segment_path, audio_segment, sr)
+                        
+                        # Calculer l'embedding et identifier
+                        unknown_emb = embedding_model(temp_segment_path)
+                        identified_name, score = identify_speaker(unknown_emb, bank_embeddings)
+                        
+                        if identified_name:
+                            speaker_mapping[speaker] = identified_name
+                            logger.info(f"   ✅ {speaker} -> {identified_name} (score: {score:.2f})")
+                        else:
+                            speaker_mapping[speaker] = speaker  # Garder le label original
+                            logger.info(f"   ❓ {speaker} non reconnu (score: {score:.2f})")
+                        
+                        # Nettoyer le fichier temporaire
+                        os.remove(temp_segment_path)
+                    except Exception as e:
+                        logger.warning(f"   ⚠️ Erreur identification {speaker}: {e}")
+                        speaker_mapping[speaker] = speaker
+            
+            logger.info(f"   📋 Mapping final: {speaker_mapping}")
+        else:
+            logger.info("   ℹ️ Pas de voice bank, utilisation des labels par défaut")
+            speaker_mapping = None
         
         # Nettoyage VRAM intermédiaire
         release_models() 
@@ -86,7 +156,7 @@ async def process_transcription_full(file_path: str, meeting_id: str):
         # ÉTAPE 4 : FUSION & SAUVEGARDE (S3)
         # ======================================================================
         logger.info(f"🔗 [JOB {meeting_id}] Étape 4 : Fusion et Upload S3...")
-        final_data = merge_transcription_diarization(whisper_segments, diarization_annotation)
+        final_data = merge_transcription_diarization(whisper_segments, diarization_annotation, speaker_mapping)
 
         # Sauvegarde via le nouveau storage.py (qui écrit directement sur MinIO)
         s3_result_path = save_results(

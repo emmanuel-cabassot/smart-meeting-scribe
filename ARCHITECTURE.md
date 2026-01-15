@@ -1,132 +1,225 @@
-# 🏗️ Architecture Technique : Smart Meeting Scribe V5.0
+# 🏗️ Architecture Technique : Smart Meeting Scribe V5.1
 
-> **Version** : 5.0 (Stack "Distribuée & S3-Ready")  
+> **Version** : 5.1 (Stack "Boto3 Native")  
 > **Approche** : "Micro-services", "Cloud Native" & "GPU Optimized"  
 > **Cible** : Déploiement multi-conteneurs sur GPU unique (Consumer Grade - ex: RTX 4070 Ti)
 
-Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de persistance validée pour 2026.
+Ce document sert de référence pour comprendre les choix technologiques, la gestion des flux de données et la stratégie de persistance.
 
 ---
 
 ## 1. Vue d'Ensemble & Philosophie
 
-La V5 marque le passage d'une gestion de fichiers locale à une architecture **Object Storage (S3)** et une **Clean Architecture** backend. Elle résout les problématiques de partage de données entre conteneurs et prépare l'intégration du RAG.
+La V5.1 consolide l'architecture **S3-Native** avec une migration complète vers **boto3** pour toutes les communications MinIO. Elle élimine les dépendances instables (fsspec/s3fs) tout en gardant une API simple.
 
-### Les 3 Piliers de l'Architecture V5
+### Les 4 Piliers de l'Architecture V5.1
 
 | Pilier | Description |
 |--------|-------------|
-| **Clean Architecture (BFF)** | Backend structuré en couches (Endpoints/Services/Models). Le Backend agit comme un Backend-for-Frontend (BFF) sécurisant l'accès aux données par JWT. |
-| **Stockage S3 (MinIO)** | Migration vers l'API S3. Plus de volumes Docker complexes pour l'audio. L'API streame directement vers MinIO, et le Worker récupère les données via le réseau interne. |
-| **Persistance Relationnelle** | Utilisation de PostgreSQL 16 pour gérer le cycle de vie complet des meetings et la banque de voix utilisateur. |
+| **Clean Architecture** | Backend structuré en couches (Endpoints → Services → Models). BFF sécurisé par JWT. |
+| **Boto3 Streaming** | Upload/Download S3 unifié via `boto3`. Pas de stockage intermédiaire sur disque. |
+| **Persistance Relationnelle** | PostgreSQL 16 pour le cycle de vie des meetings et utilisateurs. |
+| **GPU Safety** | Single Model Residency + Garbage Collection VRAM systématique. |
 
 ---
 
-## 2. La Stack Technologique (Détail)
+## 2. La Stack Technologique
 
-### 🌐 Couche Interface & Frontend
+### 🌐 Couche Interface
 
-| Composant | Rôle | Technologie |
-|-----------|------|-------------|
-| **Frontend** | Interface utilisateur moderne & réactive | Next.js 15 (React 19 / App Router) |
-| **Backend API** | Gateway sécurisée & Orchestrateur | FastAPI (Python 3.10) |
+| Composant | Technologie | Notes |
+|-----------|-------------|-------|
+| **Frontend** | Next.js 16 (Standalone) | Image Docker optimisée (~100MB) |
+| **API Gateway** | FastAPI + boto3 | Streaming direct vers MinIO |
 
-### ⚡ Couche Communication & Tâches
-
-| Composant | Rôle | Performance |
-|-----------|------|-------------|
-| **Taskiq** | Orchestrateur asynchrone partagé entre API et Worker | Latence de queue < 5ms |
-| **Redis 7** | Broker de messages pour Taskiq et cache temporaire | Mode persistant (AOF) |
-
-### 🧠 Couche Intelligence (Worker IA)
-
-| Modèle | Fonction | Notes |
-|--------|----------|-------|
-| **Faster-Whisper** | Transcription audio → texte | Modèle Large-v3 (Engine CTranslate2) |
-| **Pyannote 3.1** | Diarisation ("Qui parle ?") | Optimisé pour le GPU avec vidage VRAM systématique |
-| **WeSpeaker** | Identification biométrique | Extraction d'embeddings pour banque de voix |
-
-### 💾 Couche Données (Persistence)
+### ⚡ Couche Communication
 
 | Composant | Rôle | Technologie |
 |-----------|------|-------------|
-| **PostgreSQL 16** | Stockage structuré : Users, Meetings, Logs de tâches | SQLAlchemy Asyncpg (Driver haute performance) |
-| **MinIO** | Stockage Objet (S3) : Audios bruts & Résultats JSON | Haute disponibilité, compatible API S3 standard |
-| **Qdrant** | Base de données vectorielle | Prêt pour le RAG (Chat avec les réunions) |
+| **Taskiq** | Orchestrateur async API ↔ Worker | Python native |
+| **Redis 7** | Broker de messages + Result Backend | Mode AOF |
+
+### 🧠 Couche Intelligence (Worker GPU)
+
+| Modèle | Fonction | Version |
+|--------|----------|---------|
+| **Faster-Whisper** | Transcription audio → texte | Large-v3-Turbo (CTranslate2) |
+| **Pyannote 3.1** | Diarisation ("Qui parle ?") | speaker-diarization-3.1 |
+| **WeSpeaker** | Identification biométrique | ResNet34-LM |
+
+### 💾 Couche Données
+
+| Composant | Rôle | Accès |
+|-----------|------|-------|
+| **PostgreSQL 16** | Users, Meetings, Metadata | asyncpg (SQLAlchemy) |
+| **MinIO** | Audio (uploads) + Résultats (processed) | boto3 (S3 API) |
+| **Qdrant** | Vecteurs (futur RAG) | REST API |
+| **TEI** | Embeddings CPU | HuggingFace TGI |
 
 ---
 
-## 3. Flux de Données (Workflow V5)
-
-Voici le trajet d'une réunion au travers des micro-services.
+## 3. Flux de Données (Workflow boto3)
 
 ```mermaid
 sequenceDiagram
-    participant User as 👤 Utilisateur (NextJS 15)
-    participant API as ⚡ FastAPI (JWT)
-    participant S3 as 🪣 MinIO (S3)
-    participant DB as 🐘 PostgreSQL 16
-    participant Redis as � Redis 7
-    participant Worker as 🧠 Worker IA
+    participant User as 👤 Frontend (Next.js 16)
+    participant API as ⚡ FastAPI
+    participant S3 as 🪣 MinIO
+    participant Redis as 📮 Redis
+    participant Worker as 🧠 Worker GPU
 
-    User->>API: POST /transcribe (Audio + JWT)
-    API->>S3: Stream Upload (Bucket: uploads)
-    API->>DB: INSERT Meeting (Status: PENDING)
-    API->>Redis: Enqueue task "process_audio"
-    API-->>User: 202 Accepted (Meeting ID)
+    User->>API: POST /process (Audio + JWT)
+    API->>S3: boto3.upload_fileobj() → s3://uploads/
+    API->>Redis: kicker.kiq(s3_path, meeting_id)
+    API-->>User: 202 { task_id, meeting_id }
     
-    Note over Worker: Watcher Redis...
+    Note over Worker: Listening Redis...
     
-    Worker->>Redis: Récupère la tâche
-    Worker->>DB: UPDATE Status (PROCESSING)
-    Worker->>S3: Download Audio
+    Redis->>Worker: Pull task
+    Worker->>S3: boto3.download_file() → /tmp/
     
-    Note over Worker: 🧬 Inférence IA (Diarization -> Transcription)
+    Note over Worker: 🎵 FFmpeg → WAV
+    Note over Worker: 👥 Pyannote (Diarisation)
+    Note over Worker: 🎯 WeSpeaker (Identification)
+    Note over Worker: ✍️ Whisper (Transcription)
+    Note over Worker: 🔗 Fusion JSON
     
-    Worker->>S3: Upload JSONs (Bucket: results)
-    Worker->>DB: UPDATE Meeting (Status: COMPLETED, text_result)
+    Worker->>S3: boto3.put_object() → s3://processed/
+    Worker->>Worker: 🧹 Cleanup /tmp/
     Worker->>Redis: Task Success
 ```
 
 ---
 
-## 4. Stratégie de Gestion GPU & VRAM
+## 4. Communication S3 (boto3)
 
-### Protocole de Sécurité CUDA V5
+### API Gateway (`transcribe.py`)
 
-| Règle | Implémentation |
-|-------|----------------|
-| **Single Model Residency** | Un seul modèle (Whisper ou Pyannote) réside en VRAM à l'instant T. |
-| **Hard Purge** | Après chaque phase : `torch.cuda.empty_cache()` + `gc.collect()`. |
-| **Isolated Execution** | Le Worker tourne dans un processus dédié, isolé de l'API web pour éviter les crashs en cascade. |
+```python
+# Upload streaming (pas de fichier local)
+s3_client.upload_fileobj(
+    file.file,                    # Stream HTTP entrant
+    settings.MINIO_BUCKET_AUDIO,  # "uploads"
+    object_name,
+    ExtraArgs={"ContentType": file.content_type}
+)
+```
+
+### Worker (`tasks.py`)
+
+```python
+# Download vers /tmp pour traitement GPU
+s3.download_file(bucket_name, object_key, local_dest)
+```
+
+### Storage (`storage.py`)
+
+```python
+# Upload résultats JSON
+s3.put_object(
+    Bucket=settings.MINIO_BUCKET_RESULTS,  # "processed"
+    Key=object_key,
+    Body=json.dumps(data).encode('utf-8'),
+    ContentType='application/json'
+)
+```
 
 ---
 
-## 5. Structure du Projet (Tree-view simplifié)
+## 5. Stratégie GPU & VRAM
+
+### Protocole Single Model Residency
+
+| Phase | Modèle chargé | VRAM utilisée |
+|-------|---------------|---------------|
+| Diarisation | Pyannote 3.1 | ~1 GB |
+| Identification | WeSpeaker (+ Pyannote) | ~2.6 GB |
+| Transcription | Whisper Large-v3-Turbo | ~3.1 GB |
+
+### Garbage Collection
+
+```python
+# Après chaque phase GPU
+def release_models():
+    for model in loaded_models.values():
+        del model
+    loaded_models.clear()
+    gc.collect()
+    torch.cuda.empty_cache()
+```
+
+---
+
+## 6. Structure du Projet
 
 ```
 smart-meeting-scribe/
-├── 01-core/                # INFRA (DB, Redis, S3, Qdrant)
-├── 02-workers/             # COMPUTE (AI Engine)
-│   ├── app/                # Services IA (Audio, Transcription, Diarization)
-│   └── worker/             # Tasks Taskiq
-├── 03-interface/           # ACCESS (Web Layer)
-│   ├── backend/            # FastAPI (Auth JWT, S3 Services, SQL Models)
-│   └── frontend/           # Next.js 15 (UI / Dashboard)
-├── volumes/                # Persistance physique (S3, Postgres, Cache HF)
-└── manage.sh               # Script Master (Reset & Start)
+├── 01-core/                     # INFRASTRUCTURE
+│   └── docker-compose.yml       # PostgreSQL, Redis, MinIO, Qdrant, TEI
+│
+├── 02-workers/                  # COMPUTE (GPU)
+│   ├── app/
+│   │   ├── worker/tasks.py      # Pipeline principal (boto3)
+│   │   ├── services/
+│   │   │   ├── audio.py         # FFmpeg conversion
+│   │   │   ├── diarization.py   # Pyannote
+│   │   │   ├── transcription.py # Whisper
+│   │   │   ├── identification.py# WeSpeaker
+│   │   │   ├── fusion.py        # Merge segments
+│   │   │   └── storage.py       # boto3 upload
+│   │   └── core/models.py       # Gestion VRAM
+│   ├── voice_bank/              # Signatures vocales
+│   └── Dockerfile               # CUDA 12.4
+│
+├── 03-interface/                # WEB LAYER
+│   ├── backend/                 # FastAPI
+│   │   └── app/
+│   │       ├── api/v1/          # Routes (auth, process)
+│   │       ├── broker.py        # Taskiq Redis
+│   │       └── core/config.py   # Settings boto3
+│   └── frontend-nextjs/         # Next.js 16 (Standalone)
+│
+├── volumes/                     # Persistance
+├── .env                         # Configuration
+└── manage.sh                    # 🛠️ Script Master
 ```
 
 ---
 
-## 6. Évolutions (Roadmap V5+)
+## 7. Endpoints API
 
-- **Next.js 15 Dashboard** : Visualisation riche des segments audio et édition du texte en temps réel.
-
-- **RAG Integration** : Indexation automatique des transcriptions dans Qdrant pour poser des questions complexes sur l'historique des réunions.
-
-- **Multi-Tenant** : Isolation stricte des données par utilisateur via le `user_id` en base de données.
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| `POST` | `/api/v1/auth/register` | Inscription utilisateur |
+| `POST` | `/api/v1/auth/login` | Connexion (retourne JWT) |
+| `POST` | `/api/v1/process/` | Upload audio → dispatch task |
+| `GET` | `/api/v1/process/status/{task_id}` | Statut de la transcription |
 
 ---
 
-> **Dernière mise à jour** : Janvier 2026
+## 8. Variables d'Environnement
+
+| Variable | Description |
+|----------|-------------|
+| `MINIO_ROOT_USER` | Credentials MinIO |
+| `MINIO_ROOT_PASSWORD` | Credentials MinIO |
+| `MINIO_ENDPOINT` | Adresse MinIO (ex: `minio:9000`) |
+| `POSTGRES_USER/PASSWORD/DB` | Credentials PostgreSQL |
+| `REDIS_URL` | URL Redis (ex: `redis://sms_redis:6379`) |
+| `HF_TOKEN` | Token HuggingFace (modèles gated) |
+
+---
+
+## 9. Évolutions (Roadmap)
+
+- [x] Migration fsspec → boto3
+- [x] Next.js 16 Standalone Docker
+- [x] Speaker Identification (WeSpeaker)
+- [ ] Dashboard utilisateur (Next.js)
+- [ ] RAG Integration (Qdrant + LLM)
+- [ ] Export Word/PDF
+- [ ] Multi-Tenant isolation
+
+---
+
+> **Dernière mise à jour** : 15 Janvier 2026

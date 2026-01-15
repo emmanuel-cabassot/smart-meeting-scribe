@@ -12,6 +12,9 @@ current_whisper = None
 current_pipeline = None
 current_embedding = None
 
+# ID Spécifique pour Whisper Turbo optimisé CTranslate2 (Gain VRAM ~1.5GB)
+WHISPER_MODEL_ID = "deepdml/faster-whisper-large-v3-turbo-ct2"
+
 # ══════════════════════════════════════════════════════════════════════════════
 # UTILITAIRE VRAM
 # ══════════════════════════════════════════════════════════════════════════════
@@ -33,18 +36,23 @@ def log_vram(action: str, model_name: str):
 def load_whisper():
     global current_whisper
     if current_whisper is None:
-        print(f"   ⏳ Initialisation du chargement de Whisper ({COMPUTE_TYPE})...")
-        # On charge le modèle
-        current_whisper = WhisperModel("large-v3", device=DEVICE, compute_type=COMPUTE_TYPE)
+        print(f"   ⏳ Initialisation du chargement de Whisper Turbo ({WHISPER_MODEL_ID}) en {COMPUTE_TYPE}...")
+        # On charge le modèle Turbo optimisé (CTranslate2)
+        # Note : compute_type="int8" est recommandé pour maximiser le gain VRAM sur la RTX 4070
+        current_whisper = WhisperModel(
+            WHISPER_MODEL_ID, 
+            device=DEVICE, 
+            compute_type=COMPUTE_TYPE
+        )
         # On loggue l'état APRÈS le chargement pour voir le poids réel
-        log_vram("✅ Modèle Chargé :", "Whisper Large-v3")
+        log_vram("✅ Modèle Chargé :", "Whisper Large-v3-Turbo")
     return current_whisper
 
 def load_pyannote():
     """Charge Pyannote avec un patch de sécurité compatible PyTorch 2.6."""
     global current_pipeline
     if current_pipeline is None:
-        print("   ⏳ Initialisation du chargement de Pyannote...")
+        print("   ⏳ Initialisation du chargement de Pyannote (Segmentation)...")
         
         # Patch sécurité pour torch.load
         original_load = torch.load
@@ -67,10 +75,10 @@ def load_pyannote():
     return current_pipeline
 
 def load_embedding_model():
-    """Charge WeSpeaker."""
+    """Charge WeSpeaker (Natif Pyannote)."""
     global current_embedding
     if current_embedding is None:
-        print("   ⏳ Initialisation du chargement de WeSpeaker...")
+        print("   ⏳ Initialisation du chargement de WeSpeaker (Identification)...")
         
         original_load = torch.load
         def robust_load(*args, **kwargs):
@@ -86,7 +94,7 @@ def load_embedding_model():
             current_embedding = Inference(model, window="whole")
             current_embedding.to(torch.device(DEVICE))
             # On loggue l'état APRÈS l'envoi sur le GPU
-            log_vram("✅ Modèle Chargé :", "WeSpeaker (Identification)")
+            log_vram("✅ Modèle Chargé :", "WeSpeaker (ResNet34)")
         finally:
             torch.load = original_load
             
@@ -105,7 +113,7 @@ def release_models():
     if current_whisper is not None:
         del current_whisper
         current_whisper = None
-        freed_models.append("Whisper")
+        freed_models.append("Whisper Turbo")
     
     if current_pipeline is not None:
         del current_pipeline

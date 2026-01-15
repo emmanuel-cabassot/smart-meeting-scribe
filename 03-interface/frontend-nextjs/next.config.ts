@@ -1,15 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // ⚡ CRITIQUE : Permet de générer un dossier minimal pour Docker
   output: "standalone",
-
-  // Sécurité
   poweredByHeader: false,
+  images: { unoptimized: true },
 
-  // Optimisation images (nécessaire pour Docker sans libs externes)
-  images: {
-    unoptimized: true,
+  // Augmenter la limite de taille pour les uploads
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "500mb",
+    },
+  },
+
+  // Proxy vers le Backend FastAPI (Réseau Docker)
+  async rewrites() {
+    return [
+      {
+        source: "/api/python/:path*",
+        destination: "http://sms_api:8000/api/v1/:path*",
+      },
+    ];
   },
 };
 

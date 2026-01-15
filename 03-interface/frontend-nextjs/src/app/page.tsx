@@ -1,65 +1,115 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import VideoUpload from "@/components/VideoUpload";
+import TranscriptionViewer from "@/components/TranscriptionViewer";
+import { usePolling } from "@/hooks/use-polling";
+import { Loader2, Sparkles, RefreshCw } from "lucide-react";
+
+interface UploadResponse {
+  status: string;
+  meeting_id: string;
+  task_id: string;
+  s3_path: string;
+  message: string;
+}
 
 export default function Home() {
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const { data, isPolling, error, startPolling, stopPolling } = usePolling();
+
+  // Déclenché quand l'upload est terminé
+  const handleUploadComplete = (response: UploadResponse) => {
+    if (response && response.task_id) {
+      console.log("Upload réussi, ID tâche:", response.task_id);
+      setTaskId(response.task_id);
+      startPolling(response.task_id);
+    }
+  };
+
+  const resetAll = () => {
+    stopPolling();
+    setTaskId(null);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="max-w-5xl mx-auto">
+        {/* En-tête */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center p-3 bg-white rounded-xl shadow-sm mb-4">
+            <Sparkles className="text-indigo-600 mr-2" />
+            <span className="font-bold text-slate-800">
+              Smart Meeting Scribe V5
+            </span>
+          </div>
+          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">
+            Transformez vos réunions en{" "}
+            <span className="text-indigo-600">Texte</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-slate-500">
+            Transcription automatique + Identification des locuteurs
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+        {/* ÉTAT 1 : UPLOAD */}
+        {!taskId && !data && (
+          <div className="animate-in fade-in zoom-in-95 duration-500">
+            <VideoUpload onUploadSuccess={handleUploadComplete} />
+          </div>
+        )}
+
+        {/* ÉTAT 2 : TRAITEMENT (Polling) */}
+        {isPolling && (
+          <div className="max-w-xl mx-auto text-center py-20 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <div className="relative inline-block">
+              <Loader2 className="h-16 w-16 text-indigo-600 animate-spin" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mt-6">
+              Analyse en cours...
+            </h2>
+            <p className="text-slate-500 mt-2 px-8">
+              Le Worker GPU traite votre fichier (Whisper Turbo + Pyannote).
+              <br />
+              Cela peut prendre quelques minutes.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span>Connecté au serveur</span>
+            </div>
+          </div>
+        )}
+
+        {/* ÉTAT 3 : RÉSULTAT */}
+        {data && (
+          <div>
+            <TranscriptionViewer data={data} />
+            <div className="text-center mt-8">
+              <button
+                onClick={resetAll}
+                className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+              >
+                <RefreshCw size={16} />
+                Analyser une autre réunion
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ÉTAT ERREUR */}
+        {error && !isPolling && (
+          <div className="max-w-xl mx-auto mt-8 p-6 bg-red-50 text-red-700 rounded-xl border border-red-200 text-center shadow-sm">
+            <p className="font-bold text-lg mb-2">Une erreur est survenue</p>
+            <p className="text-sm mb-6">{error}</p>
+            <button
+              onClick={resetAll}
+              className="bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-medium hover:bg-red-50 transition-colors"
+            >
+              Réessayer
+            </button>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }

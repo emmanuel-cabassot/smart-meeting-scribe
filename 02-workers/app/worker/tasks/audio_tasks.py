@@ -10,6 +10,7 @@ Contient:
 import logging
 import os
 from pathlib import Path
+import httpx
 
 from app.broker import broker
 from app.worker.tasks.base import smart_download, cleanup_files
@@ -24,6 +25,10 @@ from app.services.identification import get_voice_bank_embeddings, identify_spea
 from app.core.models import release_models, load_embedding_model
 
 logger = logging.getLogger(__name__)
+
+# URL de l'API pour le callback (réseau Docker)
+API_WEBHOOK_URL = os.getenv("API_WEBHOOK_URL", "http://sms_api:8000/api/v1/internal/webhook/transcription-complete")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "sms-internal-worker-key-2026")
 
 
 # =============================================================================
@@ -107,6 +112,10 @@ async def process_transcription_full(file_path: str, meeting_id: str):
         )
 
         logger.info(f"✅ [JOB {meeting_id}] Succès ! Résultats : {s3_result_path}")
+        
+        # Notify API that transcription is complete
+        await _notify_api_completion(meeting_id, "completed", s3_result_path)
+        
         return {
             "status": "success", 
             "meeting_id": meeting_id, 
@@ -115,6 +124,10 @@ async def process_transcription_full(file_path: str, meeting_id: str):
 
     except Exception as e:
         logger.error(f"💥 [JOB {meeting_id}] ÉCHEC : {str(e)}", exc_info=True)
+        
+        # Notify API about the error
+        await _notify_api_completion(meeting_id, "error", error_message=str(e))
+        
         return {"status": "error", "message": str(e), "meeting_id": meeting_id}
 
     finally:
@@ -127,6 +140,53 @@ async def process_transcription_full(file_path: str, meeting_id: str):
 # =============================================================================
 # FONCTIONS HELPER PRIVÉES
 # =============================================================================
+
+async def _notify_api_completion(
+    meeting_id: str, 
+    status: str, 
+    result_path: str = None, 
+    error_message: str = None
+):
+    """
+    Notifie l'API que la transcription est terminée via webhook.
+    
+    Args:
+        meeting_id: ID du meeting (doit être un int pour la DB)
+        status: "completed" ou "error"
+        result_path: Chemin S3 des résultats (si succès)
+        error_message: Message d'erreur (si erreur)
+    """
+    try:
+        # meeting_id peut être un UUID ou un int, on essaie de parser
+        try:
+            meeting_id_int = int(meeting_id)
+        except ValueError:
+            logger.warning(f"⚠️ [Webhook] meeting_id '{meeting_id}' n'est pas un int, skip notification")
+            return
+        
+        payload = {
+            "meeting_id": meeting_id_int,
+            "status": status,
+            "result_path": result_path,
+            "error_message": error_message
+        }
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                API_WEBHOOK_URL,
+                json=payload,
+                headers={"X-Internal-Key": INTERNAL_API_KEY}
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ [Webhook] API notifiée: meeting {meeting_id} -> {status}")
+            else:
+                logger.warning(f"⚠️ [Webhook] API réponse {response.status_code}: {response.text}")
+                
+    except Exception as e:
+        # Ne pas faire échouer la tâche si le webhook échoue
+        logger.warning(f"⚠️ [Webhook] Erreur notification API: {e}")
+
 
 def _identify_speakers(audio_wav: str, diarization_annotation, meeting_id: str) -> dict:
     """

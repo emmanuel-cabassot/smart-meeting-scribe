@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎨 Frontend - Next.js 16
 
-## Getting Started
+Interface utilisateur pour Smart Meeting Scribe.
 
-First, run the development server:
+## 🏗️ Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Next.js 16** (App Router)
+- **TypeScript**
+- **Tailwind CSS**
+- **Docker Standalone** (~100MB)
+
+## 📂 Structure
+
+```
+src/
+├── app/
+│   ├── page.tsx             # Page principale (upload + résultats)
+│   ├── layout.tsx           # Layout global
+│   └── globals.css          # Styles Tailwind
+├── components/              # Composants réutilisables
+└── lib/                     # Utilitaires
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Développement
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Accès : http://localhost:3000
 
-## Learn More
+## 🐳 Docker (Production)
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+docker build -t sms-frontend .
+docker run -p 3000:3000 sms-frontend
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Le build utilise le mode **standalone** de Next.js pour une image optimisée.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🔗 API Backend
 
-## Deploy on Vercel
+Le frontend communique avec l'API via :
+- `POST /api/v1/process/` - Upload audio
+- `GET /api/v1/process/status/{task_id}` - Polling résultats
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Variable d'environnement : `NEXT_PUBLIC_API_URL`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🎯 Fonctionnalités
+
+- [x] Upload de fichiers audio/vidéo
+- [x] Affichage du statut (pending → processing → completed)
+- [x] Visualisation de la transcription avec speakers
+- [ ] Authentification JWT
+- [ ] Dashboard utilisateur

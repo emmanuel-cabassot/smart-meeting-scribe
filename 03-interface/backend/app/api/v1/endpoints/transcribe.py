@@ -167,9 +167,21 @@ async def get_task_status(task_id: str):
             }
         
     except Exception as e:
-        print(f"❌ [API] Erreur status : {str(e)}")
+        error_message = str(e)
+        
+        # "Cannot get result" signifie que la tâche est en queue mais pas encore traitée
+        if "Cannot get result" in error_message or "not found" in error_message.lower():
+            print(f"⏳ [API] Tâche en attente : {task_id}")
+            return {
+                "status": "pending",
+                "task_id": task_id,
+                "message": "La tâche est en attente de traitement..."
+            }
+        
+        # Vraie erreur
+        print(f"❌ [API] Erreur status : {error_message}")
         return {
             "status": "unknown",
             "task_id": task_id,
-            "error": str(e)
+            "error": error_message
         }

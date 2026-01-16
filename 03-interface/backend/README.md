@@ -41,7 +41,8 @@ backend/
 │   │   ├── router.py                # Agrège tous les endpoints
 │   │   └── endpoints/
 │   │       ├── auth.py              # /auth (login, register)
-│   │       ├── transcribe.py        # /process (upload, status)
+│   │       ├── transcribe.py        # /process (upload sécurisé)
+│   │       ├── meetings.py          # /meetings (CRUD + visibilité)
 │   │       └── organization.py      # /org (services, projects)
 │   │
 │   └── worker/                      # 🔄 Background tasks (TaskIQ)
@@ -72,8 +73,19 @@ backend/
 
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| `POST` | `/` | ❌ | Upload audio → S3 → dispatch Worker |
-| `GET` | `/status/{task_id}` | ❌ | Polling du statut |
+| `POST` | `/` | ✅ | Upload audio → créer Meeting → dispatch Worker |
+| `GET` | `/status/{task_id}` | ❌ | Polling du statut de transcription |
+
+### Meetings (`/api/v1/meetings`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `GET` | `/` | ✅ | Liste meetings visibles (logique matricielle) |
+| `GET` | `/mine` | ✅ | Liste mes meetings uniquement |
+| `GET` | `/{id}` | ✅ | Détail d'un meeting (check visibilité) |
+| `PATCH` | `/{id}` | ✅ Owner | Modifier un meeting |
+| `DELETE` | `/{id}` | ✅ Owner | Supprimer un meeting |
+| `GET` | `/stats/count` | ✅ | Compteur de meetings |
 
 ### Organization (`/api/v1/org`)
 
@@ -97,19 +109,30 @@ Le système utilise une double appartenance :
 - **Service** (1:N) : Département hiérarchique (R&D, Sales...)
 - **Projet** (N:N) : Mission transversale (Lancement V5...)
 
+### Algorithme de visibilité
+
+Un utilisateur voit un meeting si :
+- ✅ Il est dans le **même Service** que le meeting
+- ✅ OU il partage un **Projet** avec le meeting (sauf si `is_confidential=true`)
+
 Voir [ORGANIZATION_LOGIC.md](../ORGANIZATION_LOGIC.md) pour les détails.
 
 ## 🔐 Authentification
 
 ```bash
 # 1. Login
-curl -X POST http://localhost:5000/api/v1/auth/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@example.com&password=admin123"
+TOKEN=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
+  -d "username=admin@example.com&password=admin123" | jq -r '.access_token')
 
-# 2. Utiliser le token
-curl http://localhost:5000/api/v1/org/services \
-  -H "Authorization: Bearer <TOKEN>"
+# 2. Upload un fichier audio (avec auth)
+curl -X POST http://localhost:5000/api/v1/process/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@mon_audio.mp3" \
+  -F "title=Ma réunion"
+
+# 3. Lister mes meetings visibles
+curl http://localhost:5000/api/v1/meetings/ \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## 🐳 Docker

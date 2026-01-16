@@ -35,30 +35,43 @@ async def get_meetings_for_user(
 ) -> List[Meeting]:
     """
     Get meetings visible to a user based on matrix rules:
-    1. Meetings from user's service
+    1. Meetings from user's service (if user has a service)
     2. Meetings tagged with user's projects (if not confidential)
+    
+    Edge case: If user has no service_id, only project-based visibility applies.
     """
     # Get user's project IDs
-    user_project_ids = [p.id for p in user.projects]
+    user_project_ids = [p.id for p in user.projects] if user.projects else []
     
-    # Build the visibility query
+    # Build visibility conditions
+    conditions = []
+    
+    # Condition A: Same service (only if user has a service)
+    if user.service_id is not None:
+        conditions.append(Meeting.service_id == user.service_id)
+    
+    # Condition B: Shared project (non-confidential)
+    if user_project_ids:
+        conditions.append(
+            and_(
+                Meeting.is_confidential == False,
+                Meeting.projects.any(Project.id.in_(user_project_ids))
+            )
+        )
+    
+    # If no conditions, user sees nothing
+    if not conditions:
+        return []
+    
+    # Build the query
     query = (
         select(Meeting)
         .options(
             selectinload(Meeting.service),
-            selectinload(Meeting.projects)
+            selectinload(Meeting.projects),
+            selectinload(Meeting.owner)
         )
-        .where(
-            or_(
-                # Condition A: Same service
-                Meeting.service_id == user.service_id,
-                # Condition B: Shared project (non-confidential)
-                and_(
-                    Meeting.is_confidential == False,
-                    Meeting.projects.any(Project.id.in_(user_project_ids)) if user_project_ids else False
-                )
-            )
-        )
+        .where(or_(*conditions))
         .order_by(Meeting.created_at.desc())
         .offset(skip)
         .limit(limit)

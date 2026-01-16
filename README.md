@@ -1,14 +1,14 @@
-# Smart Meeting Scribe (V5.3)
+# Smart Meeting Scribe (V5.4)
 
 > ⚠️ **STABLE ALPHA**
 > Architecture multi-stacks distribuée avec stockage S3-Native (boto3).
-> *Version actuelle : v5.3.0*
+> *Version actuelle : v5.4.0*
 
 > 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-> 🚀 **VERSION V5.3 - Organisation Matricielle (Services & Projets)**
+> 🚀 **VERSION V5.4 - API Complète + Webhook Worker**
 > Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
 >
 > Stack : **Next.js 16** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper** • **boto3**
@@ -19,7 +19,7 @@
 
 **Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
 
-### Piliers de l'Architecture V5.3
+### Piliers de l'Architecture V5.4
 
 | Pilier | Description |
 |--------|-------------|
@@ -240,6 +240,10 @@ Système conçu pour **RTX 4070 Ti (12GB)** :
 - [x] Tasks Worker modulaires (audio/video)
 - [x] **Organisation matricielle (Services & Projets)**
 - [x] **Migrations Alembic + Seed automatique**
+- [x] **Endpoint /users/me avec contexte**
+- [x] **Filtres sur /meetings (service, projet, status)**
+- [x] **Webhook Worker → API pour sync status**
+- [ ] Frontend dynamique (Next.js)
 - [ ] Dashboard utilisateur sécurisé
 - [ ] Reconnaissance faciale (Identity Bank)
 - [ ] RAG : Chat avec vos réunions (Qdrant + LLM)
@@ -247,4 +251,4 @@ Système conçu pour **RTX 4070 Ti (12GB)** :
 
 ---
 
-*Dernière mise à jour : 16 Janvier 2026*
+*Dernière mise à jour : 17 Janvier 2026*

@@ -1,14 +1,14 @@
-# Smart Meeting Scribe (V5.2)
+# Smart Meeting Scribe (V5.3)
 
 > ⚠️ **STABLE ALPHA**
 > Architecture multi-stacks distribuée avec stockage S3-Native (boto3).
-> *Version actuelle : v5.2.0*
+> *Version actuelle : v5.3.0*
 
 > 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-> 🚀 **VERSION V5.2 - Identity Bank S3 & Tasks Modulaires**
+> 🚀 **VERSION V5.3 - Organisation Matricielle (Services & Projets)**
 > Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
 >
 > Stack : **Next.js 16** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper** • **boto3**
@@ -19,7 +19,7 @@
 
 **Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
 
-### Piliers de l'Architecture V5.2
+### Piliers de l'Architecture V5.3
 
 | Pilier | Description |
 |--------|-------------|
@@ -28,6 +28,7 @@
 | ⚡ **Clean Architecture** | Backend API structuré en couches (Endpoints ➔ Services ➔ Modèles) pour une maintenance facilitée. |
 | 🎮 **GPU Safety (VRAM)** | Stratégie Single Model Residency pour faire tourner Whisper Large-v3-Turbo et Pyannote sur 12GB de VRAM. |
 | 🎯 **Identity Bank** | Identification des locuteurs via WeSpeaker avec banque d'identités sur S3 (voix + visage future). |
+| 🏢 **Organisation Matricielle** | Système Services (vertical) & Projets (transversal) pour la visibilité des réunions en entreprise. |
 
 ---
 
@@ -71,10 +72,29 @@ graph TD
 | **Frontend** | Next.js 16 (Standalone) | Interface utilisateur (Docker optimisé ~100MB). |
 | **API** | FastAPI + boto3 | Gateway. Auth, Upload stream vers S3, dispatch Redis. |
 | **Worker** | Taskiq + Python + CUDA | Pipeline IA : Diarisation, Identification, Transcription. |
-| **Database** | PostgreSQL 16 | Persistance des utilisateurs et métadonnées. |
+| **Database** | PostgreSQL 16 | Persistance des utilisateurs, meetings, services, projets. |
 | **Object Storage** | MinIO | Stockage compatible S3 pour audio et résultats JSON. |
 | **Message Broker** | Redis 7 | File d'attente des tâches de transcription. |
 | **Vector DB** | Qdrant | Base vectorielle pour le futur RAG. |
+
+---
+
+## 🏢 Organisation Matricielle
+
+Le système utilise une **double appartenance** pour la gestion des droits d'accès aux réunions :
+
+| Type | Relation | Description |
+|------|----------|-------------|
+| **Service** | 1 User → 1 Service | Département hiérarchique (R&D, Sales, Marketing...) |
+| **Projet** | N Users ↔ N Projets | Mission transversale (Lancement V5, Audit Sécurité...) |
+
+### Algorithme de Visibilité
+
+Un utilisateur voit une réunion si :
+- ✅ **Condition A** : Il est dans le même Service que la réunion
+- ✅ **Condition B** : Il partage un Projet avec la réunion (sauf si confidentielle)
+
+> 📖 Détails complets : [03-interface/ORGANIZATION_LOGIC.md](03-interface/ORGANIZATION_LOGIC.md)
 
 ---
 
@@ -113,11 +133,15 @@ smart-meeting-scribe/
 │   ├── Dockerfile           # CUDA 12.4 + Python
 │   └── README.md
 ├── 03-interface/            # Application Web
+│   ├── ORGANIZATION_LOGIC.md # 📖 Logique matricielle
 │   ├── backend/             # API FastAPI
-│   │   └── app/
-│   │       ├── api/v1/      # Routes (Auth, Process)
-│   │       ├── broker.py    # Taskiq Redis
-│   │       └── core/        # Config, Sécurité JWT
+│   │   ├── app/
+│   │   │   ├── api/v1/      # Routes (Auth, Process, Org)
+│   │   │   ├── models/      # User, Meeting, Service, Project
+│   │   │   ├── services/    # Logique métier
+│   │   │   └── core/        # Config, Sécurité, Dépendances
+│   │   ├── alembic/         # Migrations SQL
+│   │   └── start.sh         # Script démarrage
 │   └── frontend-nextjs/     # Next.js 16 (Standalone Docker)
 ├── volumes/                 # Persistance locale
 ├── .env                     # Variables d'environnement
@@ -166,8 +190,15 @@ Ce script :
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:3000 |
-| API Docs | http://localhost:5000/docs |
+| API Docs (Swagger) | http://localhost:5000/docs |
 | MinIO Console | http://localhost:9001 |
+
+### Credentials par défaut
+
+| Service | User | Password |
+|---------|------|----------|
+| API Admin | `admin@example.com` | `admin123` |
+| MinIO | voir `.env` | voir `.env` |
 
 ---
 
@@ -181,7 +212,7 @@ Ce script :
 
 | Volume Local | Description |
 |--------------|-------------|
-| `postgres_data` | Tables SQL (Users, Meetings). |
+| `postgres_data` | Tables SQL (Users, Meetings, Services, Projects). |
 | `minio_data` | Stockage S3. |
 | `huggingface_cache` | Modèles IA (Whisper, Pyannote, WeSpeaker). |
 | `qdrant_storage` | Index vectoriels (RAG futur). |
@@ -207,6 +238,8 @@ Système conçu pour **RTX 4070 Ti (12GB)** :
 - [x] Frontend Next.js 16 (Standalone Docker)
 - [x] Identity Bank sur S3 (voix)
 - [x] Tasks Worker modulaires (audio/video)
+- [x] **Organisation matricielle (Services & Projets)**
+- [x] **Migrations Alembic + Seed automatique**
 - [ ] Dashboard utilisateur sécurisé
 - [ ] Reconnaissance faciale (Identity Bank)
 - [ ] RAG : Chat avec vos réunions (Qdrant + LLM)

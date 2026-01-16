@@ -1,6 +1,6 @@
 # 🔌 Backend API - FastAPI
 
-API Gateway pour Smart Meeting Scribe V5 avec support organisationnel (Services & Projets).
+API Gateway pour Smart Meeting Scribe V5.4 avec support organisationnel (Services & Projets).
 
 ## 🏗️ Architecture
 
@@ -41,9 +41,11 @@ backend/
 │   │   ├── router.py                # Agrège tous les endpoints
 │   │   └── endpoints/
 │   │       ├── auth.py              # /auth (login, register)
+│   │       ├── users.py             # /users (profil avec contexte)
 │   │       ├── transcribe.py        # /process (upload sécurisé)
 │   │       ├── meetings.py          # /meetings (CRUD + visibilité)
-│   │       └── organization.py      # /org (services, projects)
+│   │       ├── organization.py      # /org (services, projects)
+│   │       └── webhook.py           # /internal/webhook (callback Worker)
 │   │
 │   └── worker/                      # 🔄 Background tasks (TaskIQ)
 │       └── broker.py                # Redis broker
@@ -69,6 +71,12 @@ backend/
 | `POST` | `/register` | ❌ | Créer un compte |
 | `POST` | `/login` | ❌ | Obtenir un JWT |
 
+### Users (`/api/v1/users`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `GET` | `/me` | ✅ | Profil utilisateur avec service et projets |
+
 ### Process (`/api/v1/process`)
 
 | Méthode | Route | Auth | Description |
@@ -81,6 +89,9 @@ backend/
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
 | `GET` | `/` | ✅ | Liste meetings visibles (logique matricielle) |
+| `GET` | `/?service_id=1` | ✅ | Filtre par service |
+| `GET` | `/?project_id=2` | ✅ | Filtre par projet |
+| `GET` | `/?status=pending` | ✅ | Filtre par status |
 | `GET` | `/mine` | ✅ | Liste mes meetings uniquement |
 | `GET` | `/{id}` | ✅ | Détail d'un meeting (check visibilité) |
 | `PATCH` | `/{id}` | ✅ Owner | Modifier un meeting |
@@ -103,6 +114,14 @@ backend/
 | `PATCH` | `/projects/{id}` | 🔐 Admin | Modifier un projet |
 | `DELETE` | `/projects/{id}` | 🔐 Admin | Supprimer un projet |
 
+### Internal Webhook (`/api/v1/internal/webhook`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `POST` | `/transcription-complete` | 🔑 API Key | Callback du Worker pour sync status |
+
+> ⚠️ **Sécurité** : Le webhook requiert le header `X-Internal-Key` avec la clé interne.
+
 ## 🧠 Logique Matricielle
 
 Le système utilise une double appartenance :
@@ -124,14 +143,18 @@ Voir [ORGANIZATION_LOGIC.md](../ORGANIZATION_LOGIC.md) pour les détails.
 TOKEN=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
   -d "username=admin@example.com&password=admin123" | jq -r '.access_token')
 
-# 2. Upload un fichier audio (avec auth)
+# 2. Profil utilisateur avec contexte
+curl http://localhost:5000/api/v1/users/me \
+  -H "Authorization: Bearer $TOKEN"
+
+# 3. Upload un fichier audio (avec auth)
 curl -X POST http://localhost:5000/api/v1/process/ \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@mon_audio.mp3" \
   -F "title=Ma réunion"
 
-# 3. Lister mes meetings visibles
-curl http://localhost:5000/api/v1/meetings/ \
+# 4. Lister mes meetings visibles (avec filtres)
+curl "http://localhost:5000/api/v1/meetings/?status=completed" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

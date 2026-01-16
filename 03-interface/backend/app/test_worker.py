@@ -1,5 +1,5 @@
 import asyncio
-from app.broker import broker
+from app.worker.broker import broker
 
 # On définit la signature de la tâche pour que l'API sache comment l'appeler
 @broker.task(name="test_task")

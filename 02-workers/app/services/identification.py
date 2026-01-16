@@ -1,40 +1,91 @@
 """
 Service d'identification des locuteurs par signature vocale (WeSpeaker).
-Compare les segments audio avec une banque de voix pré-enregistrées.
+Compare les segments audio avec une banque d'identités stockée sur S3/MinIO.
+
+Structure S3:
+    s3://identity-bank/{user_id}/{person_id}/voice/sample.wav
 """
 import os
+import logging
+import tempfile
 import numpy as np
 from scipy.spatial.distance import cdist
 from app.core.models import load_embedding_model
+from app.worker.tasks.base import get_s3_client
 
-import os
-VOICE_BANK_PATH = "/code/voice_bank"
+logger = logging.getLogger(__name__)
 
-def get_voice_bank_embeddings():
-    """Scan le dossier voice_bank et génère les signatures vocales."""
+# Configuration
+IDENTITY_BANK_BUCKET = "identity-bank"
+DEFAULT_USER_ID = "default"  # À remplacer par l'ID réel quand auth sera en place
+
+
+def get_voice_bank_embeddings(user_id: str = DEFAULT_USER_ID):
+    """
+    Télécharge les échantillons vocaux depuis S3 et génère les embeddings.
+    
+    Args:
+        user_id: ID de l'utilisateur/organisation
+        
+    Returns:
+        dict: {person_id: embedding_vector}
+    """
     embeddings = {}
+    s3 = get_s3_client()
     
-    if not os.path.exists(VOICE_BANK_PATH):
-        print(f"   ⚠️ Dossier voice_bank non trouvé : {VOICE_BANK_PATH}")
+    try:
+        # Lister tous les objets dans identity-bank/{user_id}/
+        prefix = f"{user_id}/"
+        response = s3.list_objects_v2(Bucket=IDENTITY_BANK_BUCKET, Prefix=prefix)
+        
+        if "Contents" not in response:
+            logger.info(f"   ℹ️ Aucune identité trouvée pour user_id={user_id}")
+            return {}
+        
+        # Trouver les fichiers voice/sample.wav
+        voice_files = [
+            obj["Key"] for obj in response["Contents"]
+            if obj["Key"].endswith("/voice/sample.wav")
+        ]
+        
+        if not voice_files:
+            logger.info("   ⚠️ Aucun échantillon vocal trouvé dans l'identity-bank")
+            return {}
+        
+        # Charger le modèle d'embedding
+        model = load_embedding_model()
+        
+        # Télécharger et traiter chaque échantillon
+        for s3_key in voice_files:
+            # Extraire person_id du chemin: default/homme/voice/sample.wav -> homme
+            parts = s3_key.split("/")
+            if len(parts) >= 3:
+                person_id = parts[1]  # Ex: "homme", "femme"
+            else:
+                continue
+            
+            # Télécharger dans un fichier temporaire
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+                
+            try:
+                s3.download_file(IDENTITY_BANK_BUCKET, s3_key, tmp_path)
+                
+                # Calculer l'embedding
+                emb = model(tmp_path)
+                embeddings[person_id] = emb
+                logger.info(f"   👤 Signature vocale chargée : {person_id}")
+                
+            finally:
+                # Nettoyer le fichier temporaire
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+        
+        return embeddings
+        
+    except Exception as e:
+        logger.warning(f"   ⚠️ Erreur lecture identity-bank: {e}")
         return {}
-
-    files = [f for f in os.listdir(VOICE_BANK_PATH) if f.endswith(".wav")]
-    
-    if not files:
-        print("   ⚠️ Aucun fichier .wav trouvé dans voice_bank/")
-        return {}
-    
-    model = load_embedding_model()
-    
-    for f in files:
-        name = os.path.splitext(f)[0]
-        path = os.path.join(VOICE_BANK_PATH, f)
-        # Calcul du vecteur (Embedding)
-        emb = model(path)
-        embeddings[name] = emb
-        print(f"   👤 Signature vocale enregistrée pour : {name}")
-    
-    return embeddings
 
 
 def identify_speaker(unknown_emb, bank_embeddings, threshold=0.5):

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.broker import broker
+from app.worker.broker import broker
 from app.api.v1.router import api_router
 from app.db.session import engine
 from app.db.base import Base

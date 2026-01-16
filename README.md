@@ -1,14 +1,14 @@
-# Smart Meeting Scribe (V5.1)
+# Smart Meeting Scribe (V5.2)
 
 > ⚠️ **STABLE ALPHA**
 > Architecture multi-stacks distribuée avec stockage S3-Native (boto3).
-> *Version actuelle : v5.1.0*
+> *Version actuelle : v5.2.0*
 
 > 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-> 🚀 **VERSION V5.1 - Architecture S3-Native & Boto3**
+> 🚀 **VERSION V5.2 - Identity Bank S3 & Tasks Modulaires**
 > Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
 >
 > Stack : **Next.js 16** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper** • **boto3**
@@ -19,7 +19,7 @@
 
 **Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
 
-### Piliers de l'Architecture V5.1
+### Piliers de l'Architecture V5.2
 
 | Pilier | Description |
 |--------|-------------|
@@ -27,7 +27,7 @@
 | 🪣 **Stockage S3 (boto3)** | Communication unifiée via **boto3** vers MinIO. Streaming direct sans stockage intermédiaire. |
 | ⚡ **Clean Architecture** | Backend API structuré en couches (Endpoints ➔ Services ➔ Modèles) pour une maintenance facilitée. |
 | 🎮 **GPU Safety (VRAM)** | Stratégie Single Model Residency pour faire tourner Whisper Large-v3-Turbo et Pyannote sur 12GB de VRAM. |
-| 🎯 **Speaker ID** | Identification des locuteurs via WeSpeaker et banque de voix. |
+| 🎯 **Identity Bank** | Identification des locuteurs via WeSpeaker avec banque d'identités sur S3 (voix + visage future). |
 
 ---
 
@@ -86,7 +86,7 @@ graph TD
 ⬇️ Download (Worker)      → boto3.download_file() → /tmp/
 🎵 Conversion             → FFmpeg → WAV 16kHz
 👥 Diarisation            → Pyannote 3.1 (GPU)
-🎯 Identification         → WeSpeaker + Voice Bank
+🎯 Identification         → WeSpeaker + Identity Bank S3
 ✍️ Transcription          → Whisper Large-v3-Turbo (GPU)
 🔗 Fusion                 → JSON structuré par speaker
 💾 Upload Résultats       → boto3.put_object() → s3://processed/
@@ -100,14 +100,18 @@ graph TD
 ```bash
 smart-meeting-scribe/
 ├── 01-core/                 # Infrastructure (DB, Redis, S3, Qdrant, TEI)
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   └── README.md
 ├── 02-workers/              # Worker IA (Pipeline GPU)
 │   ├── app/
-│   │   ├── worker/tasks.py  # Pipeline principal (boto3)
-│   │   ├── services/        # Audio, Diarization, Transcription, Storage
+│   │   ├── worker/tasks/    # Tâches modulaires
+│   │   │   ├── audio_tasks.py
+│   │   │   ├── video_tasks.py
+│   │   │   └── base.py
+│   │   ├── services/        # Audio, Diarization, Identification, Storage
 │   │   └── core/models.py   # Gestion VRAM
-│   ├── voice_bank/          # Signatures vocales (.wav)
-│   └── Dockerfile           # CUDA 12.4 + Python
+│   ├── Dockerfile           # CUDA 12.4 + Python
+│   └── README.md
 ├── 03-interface/            # Application Web
 │   ├── backend/             # API FastAPI
 │   │   └── app/
@@ -118,6 +122,21 @@ smart-meeting-scribe/
 ├── volumes/                 # Persistance locale
 ├── .env                     # Variables d'environnement
 └── manage.sh                # 🛠️ Script Master
+```
+
+---
+
+## 🎯 Identity Bank (S3)
+
+Les signatures vocales sont stockées sur MinIO pour l'identification des locuteurs :
+
+```
+📁 s3://identity-bank/
+   └── {user_id}/                    # "default" pour l'instant
+       └── {person_id}/              # Ex: "emmanuel"
+           ├── profile.json          # Métadonnées
+           ├── voice/sample.wav      # Échantillon vocal
+           └── face/                 # (Préparé pour reconnaissance faciale)
 ```
 
 ---
@@ -154,10 +173,16 @@ Ce script :
 
 ## 💾 Gestion des Données
 
-| Volume | Description |
-|--------|-------------|
+| Bucket S3 | Description |
+|-----------|-------------|
+| `uploads` | Fichiers audio/vidéo entrants. |
+| `processed` | Résultats JSON (transcription, diarisation, fusion). |
+| `identity-bank` | Signatures vocales pour identification. |
+
+| Volume Local | Description |
+|--------------|-------------|
 | `postgres_data` | Tables SQL (Users, Meetings). |
-| `minio_data` | Stockage S3 (audio + transcriptions). |
+| `minio_data` | Stockage S3. |
 | `huggingface_cache` | Modèles IA (Whisper, Pyannote, WeSpeaker). |
 | `qdrant_storage` | Index vectoriels (RAG futur). |
 
@@ -180,10 +205,13 @@ Système conçu pour **RTX 4070 Ti (12GB)** :
 
 - [x] Migration fsspec → boto3
 - [x] Frontend Next.js 16 (Standalone Docker)
+- [x] Identity Bank sur S3 (voix)
+- [x] Tasks Worker modulaires (audio/video)
 - [ ] Dashboard utilisateur sécurisé
+- [ ] Reconnaissance faciale (Identity Bank)
 - [ ] RAG : Chat avec vos réunions (Qdrant + LLM)
 - [ ] Export Word/PDF automatisé
 
 ---
 
-*Dernière mise à jour : 15 Janvier 2026*
+*Dernière mise à jour : 16 Janvier 2026*

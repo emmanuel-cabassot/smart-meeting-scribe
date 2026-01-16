@@ -12,6 +12,8 @@ redis
 # --- Base de données ---
 sqlalchemy[asyncio]
 asyncpg
+psycopg2-binary
+alembic
 # --- Sécurité (Auth) ---
 python-jose[cryptography]
 passlib[bcrypt]

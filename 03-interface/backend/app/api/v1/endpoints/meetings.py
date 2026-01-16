@@ -25,6 +25,9 @@ router = APIRouter()
 async def list_meetings(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    service_id: Optional[int] = Query(None, description="Filter by service ID"),
+    project_id: Optional[int] = Query(None, description="Filter by project ID"),
+    status: Optional[str] = Query(None, description="Filter by status (pending, processing, completed, error)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -34,6 +37,11 @@ async def list_meetings(
     Visibility rules (matrix logic):
     - Meetings from user's service (solidarity)
     - Meetings tagged with user's projects (if not confidential)
+    
+    Optional filters:
+    - service_id: Filter by specific service
+    - project_id: Filter by specific project
+    - status: Filter by transcription status
     """
     # Load user with relationships for visibility check
     user_query = await db.execute(
@@ -43,7 +51,14 @@ async def list_meetings(
     )
     user = user_query.scalar_one()
     
-    meetings = await get_meetings_for_user(db, user, skip=skip, limit=limit)
+    meetings = await get_meetings_for_user(
+        db, user, 
+        skip=skip, 
+        limit=limit,
+        service_id=service_id,
+        project_id=project_id,
+        status=status
+    )
     return meetings
 
 

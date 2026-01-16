@@ -31,12 +31,20 @@ async def get_meetings_for_user(
     db: AsyncSession, 
     user: User,
     skip: int = 0,
-    limit: int = 50
+    limit: int = 50,
+    service_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+    status: Optional[str] = None,
 ) -> List[Meeting]:
     """
     Get meetings visible to a user based on matrix rules:
     1. Meetings from user's service (if user has a service)
     2. Meetings tagged with user's projects (if not confidential)
+    
+    Optional filters (applied on top of visibility):
+    - service_id: Filter by specific service
+    - project_id: Filter by specific project
+    - status: Filter by transcription status
     
     Edge case: If user has no service_id, only project-based visibility applies.
     """
@@ -44,26 +52,26 @@ async def get_meetings_for_user(
     user_project_ids = [p.id for p in user.projects] if user.projects else []
     
     # Build visibility conditions
-    conditions = []
+    visibility_conditions = []
     
     # Condition A: Same service (only if user has a service)
     if user.service_id is not None:
-        conditions.append(Meeting.service_id == user.service_id)
+        visibility_conditions.append(Meeting.service_id == user.service_id)
     
     # Condition B: Shared project (non-confidential)
     if user_project_ids:
-        conditions.append(
+        visibility_conditions.append(
             and_(
                 Meeting.is_confidential == False,
                 Meeting.projects.any(Project.id.in_(user_project_ids))
             )
         )
     
-    # If no conditions, user sees nothing
-    if not conditions:
+    # If no visibility conditions, user sees nothing
+    if not visibility_conditions:
         return []
     
-    # Build the query
+    # Build the base query with visibility
     query = (
         select(Meeting)
         .options(
@@ -71,7 +79,22 @@ async def get_meetings_for_user(
             selectinload(Meeting.projects),
             selectinload(Meeting.owner)
         )
-        .where(or_(*conditions))
+        .where(or_(*visibility_conditions))
+    )
+    
+    # Apply optional filters
+    if service_id is not None:
+        query = query.where(Meeting.service_id == service_id)
+    
+    if project_id is not None:
+        query = query.where(Meeting.projects.any(Project.id == project_id))
+    
+    if status is not None:
+        query = query.where(Meeting.status == status)
+    
+    # Apply ordering and pagination
+    query = (
+        query
         .order_by(Meeting.created_at.desc())
         .offset(skip)
         .limit(limit)

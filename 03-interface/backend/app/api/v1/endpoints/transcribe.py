@@ -4,7 +4,7 @@ import boto3
 from botocore.exceptions import ClientError
 from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from app.broker import broker, kicker
+from app.worker.broker import broker, kicker
 from app.core.config import settings
 
 router = APIRouter()

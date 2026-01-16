@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import transcribe, auth, organization
+from app.api.v1.endpoints import transcribe, auth, organization, meetings
 
 api_router = APIRouter()
 
@@ -11,3 +11,6 @@ api_router.include_router(transcribe.router, prefix="/process", tags=["Processin
 
 # Routes Organisation (Services, Projets)
 api_router.include_router(organization.router, prefix="/org", tags=["Organization"])
+
+# Routes Meetings (CRUD avec visibilité matricielle)
+api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])

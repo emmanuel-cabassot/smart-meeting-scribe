@@ -1,11 +1,24 @@
+"""
+Upload and transcription endpoints.
+Handles file upload to S3 and dispatches processing tasks.
+"""
 import uuid
 import json
 import boto3
+from typing import Optional, List
 from botocore.exceptions import ClientError
 from urllib.parse import urlparse
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.worker.broker import broker, kicker
 from app.core.config import settings
+from app.core.deps import get_db, get_current_user
+from app.models.user import User
+from app.models.meeting import Meeting
+from app.models.organization import Project
+from app.schemas.meeting import MeetingOut
+from sqlalchemy import select
 
 router = APIRouter()
 
@@ -27,12 +40,31 @@ except ClientError:
     pass  # Bucket existe déjà
 
 
-@router.post("/")
-async def start_transcription(file: UploadFile = File(...)):
+@router.post("/", response_model=MeetingOut)
+async def start_transcription(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    is_confidential: bool = Form(False),
+    project_ids: Optional[str] = Form(None),  # JSON string: "[1, 2]"
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    1. Reçoit le fichier (Stream)
-    2. L'écrit sur S3 (MinIO) via Boto3
-    3. Envoie la tâche au Worker via Redis
+    Upload audio/video file and start transcription.
+    
+    1. Validates file format
+    2. Uploads to S3 (MinIO)
+    3. Creates Meeting in database (with service auto-set)
+    4. Dispatches task to Worker via Redis
+    
+    Args:
+        file: Audio/video file
+        title: Optional meeting title
+        is_confidential: If true, only service members can see (default: false)
+        project_ids: JSON array of project IDs to tag, e.g. "[1, 2]"
+    
+    Returns:
+        Created Meeting object with task_id
     """
     # Validation du format
     if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
@@ -41,18 +73,44 @@ async def start_transcription(file: UploadFile = File(...)):
             detail=f"Format non supporté. Extensions acceptées: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    meeting_id = str(uuid.uuid4())
-    safe_filename = file.filename.replace(" ", "_")
-    object_name = f"{meeting_id}_{safe_filename}"
+    # Parse project_ids if provided
+    parsed_project_ids: List[int] = []
+    if project_ids:
+        try:
+            parsed_project_ids = json.loads(project_ids)
+            if not isinstance(parsed_project_ids, list):
+                parsed_project_ids = []
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="project_ids doit être un JSON array valide")
     
-    print(f"📥 [API] Réception fichier : {file.filename}")
+    # Validate project membership (SECURITY)
+    valid_projects = []
+    if parsed_project_ids:
+        user_project_ids = {p.id for p in current_user.projects}
+        
+        for pid in parsed_project_ids:
+            if pid not in user_project_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Vous ne pouvez pas taguer le projet {pid}: vous n'en êtes pas membre"
+                )
+        
+        # Fetch project objects
+        result = await db.execute(
+            select(Project).where(Project.id.in_(parsed_project_ids))
+        )
+        valid_projects = list(result.scalars().all())
+
+    # Generate unique meeting ID
+    safe_filename = file.filename.replace(" ", "_")
+    object_name = f"{uuid.uuid4()}_{safe_filename}"
+    
+    print(f"📥 [API] Réception fichier : {file.filename} (user: {current_user.email})")
 
     # === UPLOAD BOTO3 (Stream vers MinIO) ===
     try:
-        # Rembobiner le fichier au début
         await file.seek(0)
         
-        # upload_fileobj est optimisé pour le streaming (pas tout en RAM)
         s3_client.upload_fileobj(
             file.file,
             settings.MINIO_BUCKET_AUDIO,
@@ -67,21 +125,43 @@ async def start_transcription(file: UploadFile = File(...)):
         print(f"❌ [API] Erreur S3 : {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur S3: {str(e)}")
 
+    # === CREATE MEETING IN DATABASE ===
+    meeting = Meeting(
+        title=title or file.filename,
+        original_filename=file.filename,
+        s3_path=s3_path,
+        status="pending",
+        is_confidential=is_confidential,
+        owner_id=current_user.id,
+        service_id=current_user.service_id,  # Auto-set from user
+    )
+    
+    # Add validated projects
+    if valid_projects:
+        meeting.projects = valid_projects
+    
+    db.add(meeting)
+    await db.commit()
+    await db.refresh(meeting)
+    
+    print(f"💾 [API] Meeting créé en DB: ID={meeting.id}, service={current_user.service_id}")
+
     # === DISPATCH VERS REDIS ===
     try:
-        task = await kicker.kiq(file_path=s3_path, meeting_id=meeting_id)
-        print(f"🚀 [API] Tâche envoyée (ID: {task.task_id})")
+        # Pass meeting.id to worker so it can update the DB
+        task = await kicker.kiq(file_path=s3_path, meeting_id=str(meeting.id))
+        
+        # Store task_id in some way if needed (could add to meeting model later)
+        print(f"🚀 [API] Tâche envoyée (task_id: {task.task_id}, meeting_id: {meeting.id})")
+        
     except Exception as e:
+        # Rollback: delete meeting if dispatch fails
+        await db.delete(meeting)
+        await db.commit()
         print(f"❌ [API] Erreur Broker : {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erreur Broker: {str(e)}")
 
-    return {
-        "status": "queued",
-        "meeting_id": meeting_id,
-        "task_id": task.task_id,
-        "s3_path": s3_path,
-        "message": "Fichier reçu. L'IA va démarrer dès que possible."
-    }
+    return meeting
 
 
 @router.get("/status/{task_id}")

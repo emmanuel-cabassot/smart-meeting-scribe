@@ -33,6 +33,12 @@ def upgrade() -> None:
     op.create_index(op.f('ix_group_name'), 'group', ['name'], unique=True)
     op.create_index(op.f('ix_group_type'), 'group', ['type'], unique=False)
 
+    # === SEED DATA: Default "Tous" group ===
+    op.execute("""
+        INSERT INTO "group" (name, description, type, is_active)
+        VALUES ('Tous', 'Groupe par défaut - Toutes les réunions', 'department', true)
+    """)
+
     # === USER TABLE ===
     op.create_table(
         'user',

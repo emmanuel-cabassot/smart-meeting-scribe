@@ -1,5 +1,5 @@
 """
-Pydantic schemas for User model with organization context.
+Schémas Pydantic pour le modèle User avec contexte organisationnel.
 """
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -8,7 +8,7 @@ from app.schemas.organization import ServiceMinimal, ProjectMinimal
 
 
 # ============================================================
-# Base schemas
+# Schémas de base
 # ============================================================
 
 class UserBase(BaseModel):
@@ -18,12 +18,12 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    """Schema for user registration."""
+    """Schéma pour l'inscription utilisateur."""
     password: str
 
 
 class UserUpdate(BaseModel):
-    """Schema for updating user profile."""
+    """Schéma pour la mise à jour du profil utilisateur."""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
@@ -31,11 +31,11 @@ class UserUpdate(BaseModel):
 
 
 # ============================================================
-# Response schemas
+# Schémas de réponse
 # ============================================================
 
 class UserOut(UserBase):
-    """Basic user response (no organization info)."""
+    """Réponse utilisateur basique (sans info organisationnelle)."""
     id: int
     is_superuser: bool = False
 
@@ -45,8 +45,8 @@ class UserOut(UserBase):
 
 class UserWithContext(UserOut):
     """
-    User response with full organization context.
-    Used for /users/me endpoint to populate frontend state.
+    Réponse utilisateur avec contexte organisationnel complet.
+    Utilisé pour l'endpoint /users/me pour peupler l'état du frontend.
     """
     service: Optional[ServiceMinimal] = None
     projects: List[ProjectMinimal] = []
@@ -56,11 +56,11 @@ class UserWithContext(UserOut):
 
 
 # ============================================================
-# Admin schemas
+# Schémas admin
 # ============================================================
 
 class UserAdminUpdate(BaseModel):
-    """Admin-only user update (can change service/projects)."""
+    """Mise à jour utilisateur réservée aux admins (peut changer service/projets)."""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     is_active: Optional[bool] = None

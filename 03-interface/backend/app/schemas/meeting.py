@@ -1,5 +1,5 @@
 """
-Pydantic schemas for Meeting model with organization support.
+Schémas Pydantic pour le modèle Meeting avec support organisationnel.
 """
 from pydantic import BaseModel
 from typing import Optional, List
@@ -9,7 +9,7 @@ from app.schemas.organization import ServiceMinimal, ProjectMinimal
 
 
 # ============================================================
-# Base schemas
+# Schémas de base
 # ============================================================
 
 class MeetingBase(BaseModel):
@@ -18,25 +18,25 @@ class MeetingBase(BaseModel):
 
 
 class MeetingCreate(MeetingBase):
-    """Schema for creating a meeting (upload)."""
+    """Schéma pour la création d'un meeting (upload)."""
     original_filename: str
     s3_path: str
-    project_ids: Optional[List[int]] = None  # Optional project tagging
+    project_ids: Optional[List[int]] = None  # Tags de projet optionnels
 
 
 class MeetingUpdate(BaseModel):
-    """Schema for updating a meeting."""
+    """Schéma pour la mise à jour d'un meeting."""
     title: Optional[str] = None
     is_confidential: Optional[bool] = None
-    project_ids: Optional[List[int]] = None  # Update project tags
+    project_ids: Optional[List[int]] = None  # Mise à jour des tags de projet
 
 
 # ============================================================
-# Response schemas
+# Schémas de réponse
 # ============================================================
 
 class MeetingOut(MeetingBase):
-    """Basic meeting response."""
+    """Réponse meeting basique."""
     id: int
     original_filename: str
     status: str
@@ -48,7 +48,7 @@ class MeetingOut(MeetingBase):
 
 
 class MeetingWithContext(MeetingOut):
-    """Meeting with full organization context."""
+    """Meeting avec contexte organisationnel complet."""
     service: Optional[ServiceMinimal] = None
     projects: List[ProjectMinimal] = []
     transcription_text: Optional[str] = None
@@ -59,7 +59,7 @@ class MeetingWithContext(MeetingOut):
 
 
 class MeetingList(BaseModel):
-    """Paginated list of meetings."""
+    """Liste paginée de meetings."""
     items: List[MeetingOut]
     total: int
     page: int

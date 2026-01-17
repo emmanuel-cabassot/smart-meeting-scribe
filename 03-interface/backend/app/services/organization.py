@@ -1,5 +1,5 @@
 """
-CRUD operations for organization models (Service, Project).
+Opérations CRUD pour les modèles organisationnels (Service, Projet).
 """
 from typing import List, Optional
 from sqlalchemy import select, func
@@ -12,23 +12,23 @@ from app.schemas.organization import ServiceCreate, ServiceUpdate, ProjectCreate
 
 
 # ============================================================
-# Service CRUD
+# CRUD Service
 # ============================================================
 
 async def get_service(db: AsyncSession, service_id: int) -> Optional[Service]:
-    """Get a service by ID."""
+    """Récupère un service par son ID."""
     result = await db.execute(select(Service).where(Service.id == service_id))
     return result.scalar_one_or_none()
 
 
 async def get_service_by_name(db: AsyncSession, name: str) -> Optional[Service]:
-    """Get a service by name."""
+    """Récupère un service par son nom."""
     result = await db.execute(select(Service).where(Service.name == name))
     return result.scalar_one_or_none()
 
 
 async def get_services(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Service]:
-    """Get all services."""
+    """Récupère tous les services."""
     result = await db.execute(
         select(Service)
         .offset(skip)
@@ -39,7 +39,7 @@ async def get_services(db: AsyncSession, skip: int = 0, limit: int = 100) -> Lis
 
 
 async def create_service(db: AsyncSession, service_in: ServiceCreate) -> Service:
-    """Create a new service."""
+    """Crée un nouveau service."""
     service = Service(**service_in.model_dump())
     db.add(service)
     await db.commit()
@@ -52,7 +52,7 @@ async def update_service(
     service: Service, 
     service_in: ServiceUpdate
 ) -> Service:
-    """Update a service."""
+    """Met à jour un service."""
     update_data = service_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(service, field, value)
@@ -62,23 +62,23 @@ async def update_service(
 
 
 async def delete_service(db: AsyncSession, service: Service) -> None:
-    """Delete a service."""
+    """Supprime un service."""
     await db.delete(service)
     await db.commit()
 
 
 # ============================================================
-# Project CRUD
+# CRUD Projet
 # ============================================================
 
 async def get_project(db: AsyncSession, project_id: int) -> Optional[Project]:
-    """Get a project by ID."""
+    """Récupère un projet par son ID."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     return result.scalar_one_or_none()
 
 
 async def get_project_by_name(db: AsyncSession, name: str) -> Optional[Project]:
-    """Get a project by name."""
+    """Récupère un projet par son nom."""
     result = await db.execute(select(Project).where(Project.name == name))
     return result.scalar_one_or_none()
 
@@ -89,7 +89,7 @@ async def get_projects(
     limit: int = 100,
     active_only: bool = True
 ) -> List[Project]:
-    """Get all projects."""
+    """Récupère tous les projets."""
     query = select(Project).offset(skip).limit(limit).order_by(Project.name)
     if active_only:
         query = query.where(Project.is_active == True)
@@ -98,7 +98,7 @@ async def get_projects(
 
 
 async def get_user_projects(db: AsyncSession, user: User) -> List[Project]:
-    """Get projects for a specific user."""
+    """Récupère les projets d'un utilisateur spécifique."""
     result = await db.execute(
         select(Project)
         .join(Project.members)
@@ -110,7 +110,7 @@ async def get_user_projects(db: AsyncSession, user: User) -> List[Project]:
 
 
 async def create_project(db: AsyncSession, project_in: ProjectCreate) -> Project:
-    """Create a new project."""
+    """Crée un nouveau projet."""
     project = Project(**project_in.model_dump())
     db.add(project)
     await db.commit()
@@ -123,7 +123,7 @@ async def update_project(
     project: Project, 
     project_in: ProjectUpdate
 ) -> Project:
-    """Update a project."""
+    """Met à jour un projet."""
     update_data = project_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(project, field, value)
@@ -133,13 +133,13 @@ async def update_project(
 
 
 async def delete_project(db: AsyncSession, project: Project) -> None:
-    """Delete a project."""
+    """Supprime un projet."""
     await db.delete(project)
     await db.commit()
 
 
 # ============================================================
-# Membership management
+# Gestion des membres
 # ============================================================
 
 async def add_user_to_project(
@@ -147,7 +147,7 @@ async def add_user_to_project(
     user: User, 
     project: Project
 ) -> None:
-    """Add a user to a project."""
+    """Ajoute un utilisateur à un projet."""
     if project not in user.projects:
         user.projects.append(project)
         await db.commit()
@@ -158,7 +158,7 @@ async def remove_user_from_project(
     user: User, 
     project: Project
 ) -> None:
-    """Remove a user from a project."""
+    """Retire un utilisateur d'un projet."""
     if project in user.projects:
         user.projects.remove(project)
         await db.commit()

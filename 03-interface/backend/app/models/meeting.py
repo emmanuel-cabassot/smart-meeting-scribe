@@ -1,5 +1,5 @@
 """
-Meeting model with organization relationships and visibility logic.
+Modèle Meeting avec relations organisationnelles et logique de visibilité.
 """
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
@@ -11,60 +11,60 @@ from app.models.organization import meeting_project_link
 
 class Meeting(Base):
     """
-    Meeting model with matrix visibility support.
+    Modèle Meeting avec support de visibilité matricielle.
     
-    Visibility Rules:
-    1. Service members can see all meetings of their service (unless confidential)
-    2. Project members can see meetings tagged to their projects (unless confidential)
-    3. Confidential meetings are ONLY visible to service members
+    Règles de visibilité :
+    1. Les membres d'un service peuvent voir tous les meetings de leur service (sauf confidentiel)
+    2. Les membres d'un projet peuvent voir les meetings taggés sur leurs projets (sauf confidentiel)
+    3. Les meetings confidentiels ne sont visibles QUE par les membres du service
     
-    Ownership Rules:
-    - service_id is automatically set to the owner's service
-    - owner_id uses SET NULL on delete (meeting persists if user is deleted)
+    Règles de propriété :
+    - service_id est automatiquement défini sur le service du propriétaire
+    - owner_id utilise SET NULL à la suppression (le meeting persiste si l'utilisateur est supprimé)
     """
     __tablename__ = "meeting"
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), index=True, nullable=True)
     
-    # File info
+    # Informations du fichier
     original_filename = Column(String(500), nullable=False)
     s3_path = Column(String(1000), nullable=False)
     
-    # Workflow status
+    # Statut du workflow
     status = Column(String(50), default="pending", index=True)
     
-    # Results
+    # Résultats
     transcription_text = Column(Text, nullable=True)
     
-    # Timestamps
+    # Horodatages
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # =====================================================
-    # Organization Fields (Matrix Logic)
+    # Champs organisationnels (Logique matricielle)
     # =====================================================
     
-    # Confidentiality flag
+    # Indicateur de confidentialité
     is_confidential = Column(Boolean, default=False, nullable=False)
     
-    # Owner (SET NULL on delete - meeting persists)
+    # Propriétaire (SET NULL à la suppression - le meeting persiste)
     owner_id = Column(
         Integer, 
         ForeignKey("user.id", ondelete="SET NULL"), 
-        nullable=True  # Nullable for orphan meetings
+        nullable=True  # Nullable pour les meetings orphelins
     )
     owner = relationship("User", back_populates="meetings")
     
-    # Service ownership (required, auto-set from owner's service)
+    # Propriété du service (requis, auto-défini depuis le service du propriétaire)
     service_id = Column(
         Integer, 
         ForeignKey("service.id"), 
-        nullable=True  # nullable for migration, should be required
+        nullable=True  # nullable pour la migration, devrait être requis
     )
     service = relationship("Service", back_populates="meetings")
     
-    # Project tagging (N:N, optional)
+    # Tags de projet (N:N, optionnel)
     projects = relationship(
         "Project",
         secondary=meeting_project_link,
@@ -76,32 +76,32 @@ class Meeting(Base):
 
 
 # ============================================================
-# Visibility Logic (used in services/meeting.py)
+# Logique de visibilité (utilisée dans services/meeting.py)
 # ============================================================
 
 def can_user_access_meeting(user, meeting: Meeting) -> bool:
     """
-    Check if a user can access a meeting based on matrix rules.
+    Vérifie si un utilisateur peut accéder à un meeting selon les règles matricielles.
     
     Args:
-        user: User object with service_id and projects
-        meeting: Meeting object to check access for
+        user: Objet User avec service_id et projects
+        meeting: Objet Meeting dont on vérifie l'accès
     
     Returns:
-        True if user can access, False otherwise
+        True si l'utilisateur peut accéder, False sinon
     """
-    # Rule 1: Service solidarity (same service = access)
+    # Règle 1 : Solidarité de service (même service = accès)
     if meeting.service_id == user.service_id:
         return True
     
-    # Rule 2: Project bridge (shared project = access, unless confidential)
+    # Règle 2 : Passerelle projet (projet partagé = accès, sauf si confidentiel)
     if not meeting.is_confidential:
         user_project_ids = {p.id for p in user.projects}
         meeting_project_ids = {p.id for p in meeting.projects}
         
-        # Check intersection
+        # Vérifie l'intersection
         if user_project_ids & meeting_project_ids:
             return True
     
-    # No access
+    # Pas d'accès
     return False

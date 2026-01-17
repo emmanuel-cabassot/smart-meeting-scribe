@@ -1,5 +1,5 @@
 """
-Meetings CRUD endpoints with matrix visibility.
+Endpoints CRUD pour les Meetings avec visibilité matricielle.
 """
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -25,25 +25,25 @@ router = APIRouter()
 async def list_meetings(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    service_id: Optional[int] = Query(None, description="Filter by service ID"),
-    project_id: Optional[int] = Query(None, description="Filter by project ID"),
-    status: Optional[str] = Query(None, description="Filter by status (pending, processing, completed, error)"),
+    service_id: Optional[int] = Query(None, description="Filtrer par ID de service"),
+    project_id: Optional[int] = Query(None, description="Filtrer par ID de projet"),
+    status: Optional[str] = Query(None, description="Filtrer par statut (pending, processing, completed, error)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    List all meetings visible to the current user.
+    Liste tous les meetings visibles pour l'utilisateur courant.
     
-    Visibility rules (matrix logic):
-    - Meetings from user's service (solidarity)
-    - Meetings tagged with user's projects (if not confidential)
+    Règles de visibilité (logique matricielle) :
+    - Meetings du service de l'utilisateur (solidarité)
+    - Meetings taggés avec les projets de l'utilisateur (si non confidentiel)
     
-    Optional filters:
-    - service_id: Filter by specific service
-    - project_id: Filter by specific project
-    - status: Filter by transcription status
+    Filtres optionnels :
+    - service_id : Filtrer par service spécifique
+    - project_id : Filtrer par projet spécifique
+    - status : Filtrer par statut de transcription
     """
-    # Load user with relationships for visibility check
+    # Charge l'utilisateur avec ses relations pour la vérification de visibilité
     user_query = await db.execute(
         select(User)
         .options(selectinload(User.projects))
@@ -70,7 +70,7 @@ async def list_my_meetings(
     current_user: User = Depends(get_current_user),
 ):
     """
-    List only meetings owned by the current user.
+    Liste uniquement les meetings créés par l'utilisateur courant.
     """
     query = (
         select(Meeting)
@@ -96,16 +96,16 @@ async def get_meeting_detail(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get a specific meeting by ID.
+    Récupère un meeting spécifique par son ID.
     
-    Checks visibility before returning.
+    Vérifie la visibilité avant de retourner le résultat.
     """
     meeting = await get_meeting(db, meeting_id)
     
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Load user with projects for visibility check
+    # Charge l'utilisateur avec ses projets pour la vérification de visibilité
     user_query = await db.execute(
         select(User)
         .options(selectinload(User.projects))
@@ -113,9 +113,9 @@ async def get_meeting_detail(
     )
     user = user_query.scalar_one()
     
-    # Check visibility
+    # Vérifie la visibilité
     if not can_user_access_meeting(user, meeting) and not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="You don't have access to this meeting")
+        raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce meeting")
     
     return meeting
 
@@ -128,16 +128,16 @@ async def update_meeting_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Update a meeting.
+    Met à jour un meeting.
     
-    Only the owner or a superuser can update.
+    Seul le propriétaire ou un superuser peut modifier.
     """
     meeting = await get_meeting(db, meeting_id)
     
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Load user with projects for update validation
+    # Charge l'utilisateur avec ses projets pour la validation de mise à jour
     user_query = await db.execute(
         select(User)
         .options(selectinload(User.projects))
@@ -156,16 +156,16 @@ async def delete_meeting_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Delete a meeting.
+    Supprime un meeting.
     
-    Only the owner or a superuser can delete.
+    Seul le propriétaire ou un superuser peut supprimer.
     """
     meeting = await get_meeting(db, meeting_id)
     
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Load user for permission check
+    # Charge l'utilisateur pour la vérification des permissions
     user_query = await db.execute(
         select(User)
         .options(selectinload(User.projects))
@@ -183,9 +183,9 @@ async def get_meetings_count(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get count of meetings visible to the current user.
+    Récupère le nombre de meetings visibles pour l'utilisateur courant.
     """
-    # Load user with projects
+    # Charge l'utilisateur avec ses projets
     user_query = await db.execute(
         select(User)
         .options(selectinload(User.projects))
@@ -193,7 +193,7 @@ async def get_meetings_count(
     )
     user = user_query.scalar_one()
     
-    # Use the same visibility logic
+    # Utilise la même logique de visibilité
     meetings = await get_meetings_for_user(db, user, skip=0, limit=10000)
     
     return {

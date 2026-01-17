@@ -1,5 +1,5 @@
 """
-Business logic for meetings with matrix visibility.
+Logique métier pour les meetings avec visibilité matricielle.
 """
 from typing import List, Optional
 from sqlalchemy import select, or_, and_
@@ -14,7 +14,7 @@ from app.schemas.meeting import MeetingCreate, MeetingUpdate
 
 
 async def get_meeting(db: AsyncSession, meeting_id: int) -> Optional[Meeting]:
-    """Get a meeting by ID with relationships loaded."""
+    """Récupère un meeting par son ID avec les relations chargées."""
     result = await db.execute(
         select(Meeting)
         .options(
@@ -37,28 +37,28 @@ async def get_meetings_for_user(
     status: Optional[str] = None,
 ) -> List[Meeting]:
     """
-    Get meetings visible to a user based on matrix rules:
-    1. Meetings from user's service (if user has a service)
-    2. Meetings tagged with user's projects (if not confidential)
+    Récupère les meetings visibles pour un utilisateur selon les règles matricielles :
+    1. Meetings du service de l'utilisateur (si l'utilisateur a un service)
+    2. Meetings taggés sur les projets de l'utilisateur (si non confidentiels)
     
-    Optional filters (applied on top of visibility):
-    - service_id: Filter by specific service
-    - project_id: Filter by specific project
-    - status: Filter by transcription status
+    Filtres optionnels (appliqués en plus de la visibilité) :
+    - service_id : Filtrer par service spécifique
+    - project_id : Filtrer par projet spécifique
+    - status : Filtrer par statut de transcription
     
-    Edge case: If user has no service_id, only project-based visibility applies.
+    Cas limite : Si l'utilisateur n'a pas de service_id, seule la visibilité par projet s'applique.
     """
-    # Get user's project IDs
+    # Récupère les IDs de projets de l'utilisateur
     user_project_ids = [p.id for p in user.projects] if user.projects else []
     
-    # Build visibility conditions
+    # Construit les conditions de visibilité
     visibility_conditions = []
     
-    # Condition A: Same service (only if user has a service)
+    # Condition A : Même service (seulement si l'utilisateur a un service)
     if user.service_id is not None:
         visibility_conditions.append(Meeting.service_id == user.service_id)
     
-    # Condition B: Shared project (non-confidential)
+    # Condition B : Projet partagé (non confidentiel)
     if user_project_ids:
         visibility_conditions.append(
             and_(
@@ -67,11 +67,11 @@ async def get_meetings_for_user(
             )
         )
     
-    # If no visibility conditions, user sees nothing
+    # Si pas de conditions de visibilité, l'utilisateur ne voit rien
     if not visibility_conditions:
         return []
     
-    # Build the base query with visibility
+    # Construit la requête de base avec la visibilité
     query = (
         select(Meeting)
         .options(
@@ -82,7 +82,7 @@ async def get_meetings_for_user(
         .where(or_(*visibility_conditions))
     )
     
-    # Apply optional filters
+    # Applique les filtres optionnels
     if service_id is not None:
         query = query.where(Meeting.service_id == service_id)
     
@@ -92,7 +92,7 @@ async def get_meetings_for_user(
     if status is not None:
         query = query.where(Meeting.status == status)
     
-    # Apply ordering and pagination
+    # Applique l'ordre et la pagination
     query = (
         query
         .order_by(Meeting.created_at.desc())
@@ -110,13 +110,13 @@ async def create_meeting(
     current_user: User
 ) -> Meeting:
     """
-    Create a meeting with security validation.
+    Crée un meeting avec validation de sécurité.
     
-    Security rules:
-    - service_id is automatically set to user's service
-    - project_ids must be projects the user belongs to
+    Règles de sécurité :
+    - service_id est automatiquement défini sur le service de l'utilisateur
+    - project_ids doivent être des projets dont l'utilisateur est membre
     """
-    # Validate project tagging (SECURITY: user must be member)
+    # Valide les tags de projet (SÉCURITÉ : l'utilisateur doit être membre)
     valid_projects = []
     if meeting_in.project_ids:
         user_project_ids = {p.id for p in current_user.projects}
@@ -125,26 +125,26 @@ async def create_meeting(
             if pid not in user_project_ids:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Cannot tag project {pid}: you are not a member"
+                    detail=f"Impossible de taguer le projet {pid} : vous n'êtes pas membre"
                 )
         
-        # Fetch project objects
+        # Récupère les objets projet
         result = await db.execute(
             select(Project).where(Project.id.in_(meeting_in.project_ids))
         )
         valid_projects = list(result.scalars().all())
     
-    # Create meeting
+    # Crée le meeting
     meeting = Meeting(
         title=meeting_in.title,
         original_filename=meeting_in.original_filename,
         s3_path=meeting_in.s3_path,
         is_confidential=meeting_in.is_confidential,
         owner_id=current_user.id,
-        service_id=current_user.service_id,  # Auto-set from user
+        service_id=current_user.service_id,  # Auto-défini depuis l'utilisateur
     )
     
-    # Add validated projects
+    # Ajoute les projets validés
     if valid_projects:
         meeting.projects = valid_projects
     
@@ -162,23 +162,23 @@ async def update_meeting(
     current_user: User
 ) -> Meeting:
     """
-    Update a meeting.
-    Only owner or superuser can update.
+    Met à jour un meeting.
+    Seul le propriétaire ou un superuser peut modifier.
     """
-    # Check permission
+    # Vérifie les permissions
     if meeting.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not allowed to update this meeting"
+            detail="Non autorisé à modifier ce meeting"
         )
     
-    # Update basic fields
+    # Met à jour les champs de base
     if meeting_in.title is not None:
         meeting.title = meeting_in.title
     if meeting_in.is_confidential is not None:
         meeting.is_confidential = meeting_in.is_confidential
     
-    # Update project tags (with security validation)
+    # Met à jour les tags de projet (avec validation de sécurité)
     if meeting_in.project_ids is not None:
         user_project_ids = {p.id for p in current_user.projects}
         
@@ -186,7 +186,7 @@ async def update_meeting(
             if pid not in user_project_ids and not current_user.is_superuser:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Cannot tag project {pid}: you are not a member"
+                    detail=f"Impossible de taguer le projet {pid} : vous n'êtes pas membre"
                 )
         
         result = await db.execute(
@@ -206,13 +206,13 @@ async def delete_meeting(
     current_user: User
 ) -> None:
     """
-    Delete a meeting.
-    Only owner or superuser can delete.
+    Supprime un meeting.
+    Seul le propriétaire ou un superuser peut supprimer.
     """
     if meeting.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not allowed to delete this meeting"
+            detail="Non autorisé à supprimer ce meeting"
         )
     
     await db.delete(meeting)

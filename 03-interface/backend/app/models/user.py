@@ -1,5 +1,5 @@
 """
-User model with organization relationships.
+Modèle User avec relations organisationnelles.
 """
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
@@ -10,11 +10,11 @@ from app.models.organization import user_project_link
 
 class User(Base):
     """
-    User model with matrix organization support.
+    Modèle utilisateur avec support d'organisation matricielle.
     
-    Organization Rules:
-    - A User belongs to exactly ONE Service (service_id)
-    - A User can participate in MULTIPLE Projects (projects)
+    Règles organisationnelles :
+    - Un utilisateur appartient à exactement UN Service (service_id)
+    - Un utilisateur peut participer à PLUSIEURS Projets (projects)
     """
     __tablename__ = "user"
 
@@ -25,18 +25,18 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
 
-    # Organization: Service (1:N) - Required
-    service_id = Column(Integer, ForeignKey("service.id"), nullable=True)  # nullable for migration
+    # Organisation : Service (1:N) - Requis
+    service_id = Column(Integer, ForeignKey("service.id"), nullable=True)  # nullable pour la migration
     service = relationship("Service", back_populates="users")
 
-    # Organization: Projects (N:N) - Optional
+    # Organisation : Projets (N:N) - Optionnel
     projects = relationship(
         "Project",
         secondary=user_project_link,
         back_populates="members"
     )
 
-    # Meetings created by this user
+    # Meetings créés par cet utilisateur
     meetings = relationship("Meeting", back_populates="owner")
 
     def __repr__(self) -> str:
@@ -44,5 +44,5 @@ class User(Base):
     
     @property
     def project_ids(self) -> set[int]:
-        """Return set of project IDs for quick lookup."""
+        """Retourne l'ensemble des IDs de projets pour une recherche rapide."""
         return {p.id for p in self.projects}

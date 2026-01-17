@@ -1,12 +1,12 @@
 """
-Pydantic schemas for organization models (Service, Project).
+Schémas Pydantic pour les modèles organisationnels (Service, Projet).
 """
 from pydantic import BaseModel
 from typing import Optional
 
 
 # ============================================================
-# Service Schemas
+# Schémas Service
 # ============================================================
 
 class ServiceBase(BaseModel):
@@ -31,12 +31,12 @@ class ServiceRead(ServiceBase):
 
 
 class ServiceWithCount(ServiceRead):
-    """Service with member count for admin views."""
+    """Service avec compteur de membres pour les vues admin."""
     member_count: int = 0
 
 
 # ============================================================
-# Project Schemas
+# Schémas Projet
 # ============================================================
 
 class ProjectBase(BaseModel):
@@ -63,16 +63,16 @@ class ProjectRead(ProjectBase):
 
 
 class ProjectWithCount(ProjectRead):
-    """Project with member count for admin views."""
+    """Projet avec compteur de membres pour les vues admin."""
     member_count: int = 0
 
 
 # ============================================================
-# Lightweight schemas for embedding in other responses
+# Schémas légers pour l'intégration dans d'autres réponses
 # ============================================================
 
 class ServiceMinimal(BaseModel):
-    """Minimal service info for user context."""
+    """Info service minimale pour le contexte utilisateur."""
     id: int
     name: str
 
@@ -81,7 +81,7 @@ class ServiceMinimal(BaseModel):
 
 
 class ProjectMinimal(BaseModel):
-    """Minimal project info for user context."""
+    """Info projet minimale pour le contexte utilisateur."""
     id: int
     name: str
 

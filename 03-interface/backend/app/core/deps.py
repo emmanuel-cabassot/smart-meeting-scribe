@@ -1,6 +1,6 @@
 """
-Dependency injection for FastAPI endpoints.
-Centralizes common dependencies: database session, current user, etc.
+Injection de dépendances pour les endpoints FastAPI.
+Centralise les dépendances communes : session DB, utilisateur courant, etc.
 """
 from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, status
@@ -13,14 +13,14 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.user import User
 
-# OAuth2 scheme for token extraction
+# Schéma OAuth2 pour l'extraction du token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Database session dependency.
-    Yields a session and ensures proper cleanup.
+    Dépendance pour obtenir une session de base de données.
+    Fournit une session et assure son nettoyage propre.
     """
     async with AsyncSessionLocal() as session:
         try:
@@ -34,12 +34,12 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme)
 ) -> User:
     """
-    Get current authenticated user from JWT token.
-    Raises 401 if token is invalid or user not found.
+    Récupère l'utilisateur authentifié depuis le token JWT.
+    Lève une erreur 401 si le token est invalide ou l'utilisateur introuvable.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Impossible de valider les identifiants",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
@@ -55,7 +55,7 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    # Fetch user from database
+    # Récupère l'utilisateur depuis la base de données
     result = await db.execute(select(User).where(User.id == int(user_id)))
     user = result.scalar_one_or_none()
     
@@ -65,7 +65,7 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
+            detail="Utilisateur inactif"
         )
     
     return user
@@ -75,12 +75,12 @@ async def get_current_active_superuser(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """
-    Dependency for admin-only endpoints.
-    Raises 403 if user is not superuser.
+    Dépendance pour les endpoints réservés aux admins.
+    Lève une erreur 403 si l'utilisateur n'est pas superuser.
     """
     if not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permissions insuffisantes"
         )
     return current_user

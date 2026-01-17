@@ -1,5 +1,5 @@
 """
-User endpoints.
+Endpoints utilisateur.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,11 +19,11 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get current user info with organization context.
+    Récupère les informations de l'utilisateur courant avec son contexte organisationnel.
     
-    Returns the user's service and projects for frontend state.
+    Retourne le service et les projets de l'utilisateur pour l'état du frontend.
     """
-    # Reload user with relationships
+    # Recharge l'utilisateur avec ses relations
     result = await db.execute(
         select(User)
         .options(

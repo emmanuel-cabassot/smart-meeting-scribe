@@ -1,6 +1,6 @@
 """
-Internal webhook endpoints.
-These are called by the Worker, not by users.
+Endpoints webhook internes.
+Ces endpoints sont appelés par le Worker, pas par les utilisateurs.
 """
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
@@ -15,15 +15,15 @@ from app.models.meeting import Meeting
 
 router = APIRouter()
 
-# Internal API key for worker authentication
-# In production, move this to environment variable
+# Clé API interne pour l'authentification du worker
+# En production, à déplacer vers une variable d'environnement
 INTERNAL_API_KEY = "sms-internal-worker-key-2026"
 
 
 class TranscriptionCompletePayload(BaseModel):
-    """Payload sent by Worker when transcription is complete."""
+    """Payload envoyé par le Worker quand la transcription est terminée."""
     meeting_id: int
-    status: str  # "completed" or "error"
+    status: str  # "completed" ou "error"
     result_path: Optional[str] = None  # s3://processed/...
     error_message: Optional[str] = None
 
@@ -35,39 +35,39 @@ async def transcription_complete(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Called by the Worker when transcription is complete.
+    Appelé par le Worker quand la transcription est terminée.
     
-    Updates the Meeting in the database with the new status and result path.
+    Met à jour le Meeting dans la base avec le nouveau statut et le chemin du résultat.
     
-    Security: Requires X-Internal-Key header matching INTERNAL_API_KEY.
+    Sécurité : Requiert le header X-Internal-Key correspondant à INTERNAL_API_KEY.
     """
-    # Verify internal API key
+    # Vérifie la clé API interne
     if x_internal_key != INTERNAL_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid internal API key")
+        raise HTTPException(status_code=401, detail="Clé API interne invalide")
     
-    # Find the meeting
+    # Trouve le meeting
     result = await db.execute(
         select(Meeting).where(Meeting.id == payload.meeting_id)
     )
     meeting = result.scalar_one_or_none()
     
     if not meeting:
-        raise HTTPException(status_code=404, detail=f"Meeting {payload.meeting_id} not found")
+        raise HTTPException(status_code=404, detail=f"Meeting {payload.meeting_id} introuvable")
     
-    # Update the meeting
+    # Met à jour le meeting
     meeting.status = payload.status
     
     if payload.result_path:
-        # Store the result path in a field (we could add result_path to Meeting model)
-        # For now, we'll store it in transcription_text as a reference
-        meeting.transcription_text = f"Result: {payload.result_path}"
+        # Stocke le chemin du résultat dans un champ (on pourrait ajouter result_path au modèle Meeting plus tard)
+        # Pour l'instant, on le stocke dans transcription_text comme référence
+        meeting.transcription_text = f"Résultat : {payload.result_path}"
     
     if payload.error_message:
-        meeting.transcription_text = f"Error: {payload.error_message}"
+        meeting.transcription_text = f"Erreur : {payload.error_message}"
     
     await db.commit()
     
-    print(f"✅ [Webhook] Meeting {payload.meeting_id} updated to status: {payload.status}")
+    print(f"✅ [Webhook] Meeting {payload.meeting_id} mis à jour avec le statut : {payload.status}")
     
     return {
         "success": True,

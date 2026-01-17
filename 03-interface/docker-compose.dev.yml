@@ -1,0 +1,31 @@
+# docker-compose.dev.yml
+# Utilisé pour le développement frontend avec hot-reload
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up frontend
+
+name: sms-interface
+
+services:
+  frontend:
+    build:
+      context: ./frontend-nextjs
+      dockerfile: Dockerfile.dev
+    container_name: sms_frontend_dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Monte le code source pour hot-reload
+      - ./frontend-nextjs/src:/app/src
+      - ./frontend-nextjs/public:/app/public
+      # Monte les configs nécessaires
+      - ./frontend-nextjs/next.config.ts:/app/next.config.ts
+      - ./frontend-nextjs/tsconfig.json:/app/tsconfig.json
+      - ./frontend-nextjs/postcss.config.mjs:/app/postcss.config.mjs
+    environment:
+      - API_INTERNAL_URL=http://sms_api:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - backend
+    networks:
+      - sms_network
+    restart: unless-stopped

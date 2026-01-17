@@ -64,8 +64,19 @@ Le frontend existe déjà dans : **`03-interface/frontend-nextjs/`**
 
 - **Code Frontend** : `03-interface/frontend-nextjs/`
 - **Backend API** : `03-interface/backend/`
+- **📡 Routes API** : [`03-interface/backend/README.md`](./03-interface/backend/README.md) ← Documentation complète des endpoints
 - **Architecture globale** : `ARCHITECTURE.md`
 - **Contexte projet** : `CONTEXT.md`
+
+---
+
+## 🌐 URLs de développement
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:3000 | Interface Next.js |
+| Backend API | http://localhost:5000 | FastAPI |
+| API Docs | http://localhost:5000/docs | Swagger UI |
 
 ---
 

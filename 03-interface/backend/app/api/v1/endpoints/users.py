@@ -19,17 +19,14 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Récupère les informations de l'utilisateur courant avec son contexte organisationnel.
+    Récupère les informations de l'utilisateur courant avec ses groupes.
     
-    Retourne le service et les projets de l'utilisateur pour l'état du frontend.
+    Retourne les groupes de l'utilisateur pour l'état du frontend.
     """
     # Recharge l'utilisateur avec ses relations
     result = await db.execute(
         select(User)
-        .options(
-            selectinload(User.service),
-            selectinload(User.projects)
-        )
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = result.scalar_one()

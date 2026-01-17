@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import transcribe, auth, organization, meetings, users, webhook
+from app.api.v1.endpoints import transcribe, auth, meetings, users, webhook, groups
 
 api_router = APIRouter()
 
@@ -12,12 +12,11 @@ api_router.include_router(users.router, prefix="/users", tags=["Users"])
 # Routes de Process (IA)
 api_router.include_router(transcribe.router, prefix="/process", tags=["Processing"])
 
-# Routes Organisation (Services, Projets)
-api_router.include_router(organization.router, prefix="/org", tags=["Organization"])
+# Routes Groupes (CRUD + membres)
+api_router.include_router(groups.router, prefix="/groups", tags=["Groups"])
 
-# Routes Meetings (CRUD avec visibilité matricielle)
+# Routes Meetings (CRUD avec visibilité par groupes)
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])
 
 # Routes Webhook internes (appelées par le Worker)
 api_router.include_router(webhook.router, prefix="/internal/webhook", tags=["Internal"])
-

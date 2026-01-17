@@ -22,6 +22,7 @@ services:
 
     volumes:
       - ./backend/app:/code/app
+      - ./backend/alembic:/code/alembic
 
     # Variables d'environnement partagées
     environment:

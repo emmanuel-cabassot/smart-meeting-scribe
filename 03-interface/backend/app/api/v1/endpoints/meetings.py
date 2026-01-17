@@ -1,11 +1,11 @@
 """
-Endpoints CRUD pour les Meetings avec visibilité matricielle.
+Endpoints CRUD pour les Meetings avec visibilité par groupes.
 """
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.core.deps import get_db, get_current_user
 from app.models.user import User
@@ -25,8 +25,7 @@ router = APIRouter()
 async def list_meetings(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    service_id: Optional[int] = Query(None, description="Filtrer par ID de service"),
-    project_id: Optional[int] = Query(None, description="Filtrer par ID de projet"),
+    group_id: Optional[int] = Query(None, description="Filtrer par ID de groupe"),
     status: Optional[str] = Query(None, description="Filtrer par statut (pending, processing, completed, error)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -34,19 +33,16 @@ async def list_meetings(
     """
     Liste tous les meetings visibles pour l'utilisateur courant.
     
-    Règles de visibilité (logique matricielle) :
-    - Meetings du service de l'utilisateur (solidarité)
-    - Meetings taggés avec les projets de l'utilisateur (si non confidentiel)
+    Règle de visibilité : L'utilisateur voit un meeting s'il partage au moins un groupe avec lui.
     
     Filtres optionnels :
-    - service_id : Filtrer par service spécifique
-    - project_id : Filtrer par projet spécifique
+    - group_id : Filtrer par groupe spécifique
     - status : Filtrer par statut de transcription
     """
-    # Charge l'utilisateur avec ses relations pour la vérification de visibilité
+    # Charge l'utilisateur avec ses groupes
     user_query = await db.execute(
         select(User)
-        .options(selectinload(User.projects))
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = user_query.scalar_one()
@@ -55,9 +51,8 @@ async def list_meetings(
         db, user, 
         skip=skip, 
         limit=limit,
-        service_id=service_id,
-        project_id=project_id,
-        status=status
+        group_id=group_id,
+        status_filter=status
     )
     return meetings
 
@@ -75,8 +70,7 @@ async def list_my_meetings(
     query = (
         select(Meeting)
         .options(
-            selectinload(Meeting.service),
-            selectinload(Meeting.projects),
+            selectinload(Meeting.groups),
             selectinload(Meeting.owner)
         )
         .where(Meeting.owner_id == current_user.id)
@@ -105,10 +99,10 @@ async def get_meeting_detail(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Charge l'utilisateur avec ses projets pour la vérification de visibilité
+    # Charge l'utilisateur avec ses groupes
     user_query = await db.execute(
         select(User)
-        .options(selectinload(User.projects))
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = user_query.scalar_one()
@@ -137,10 +131,10 @@ async def update_meeting_endpoint(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Charge l'utilisateur avec ses projets pour la validation de mise à jour
+    # Charge l'utilisateur avec ses groupes
     user_query = await db.execute(
         select(User)
-        .options(selectinload(User.projects))
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = user_query.scalar_one()
@@ -165,10 +159,10 @@ async def delete_meeting_endpoint(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting introuvable")
     
-    # Charge l'utilisateur pour la vérification des permissions
+    # Charge l'utilisateur
     user_query = await db.execute(
         select(User)
-        .options(selectinload(User.projects))
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = user_query.scalar_one()
@@ -185,10 +179,10 @@ async def get_meetings_count(
     """
     Récupère le nombre de meetings visibles pour l'utilisateur courant.
     """
-    # Charge l'utilisateur avec ses projets
+    # Charge l'utilisateur avec ses groupes
     user_query = await db.execute(
         select(User)
-        .options(selectinload(User.projects))
+        .options(selectinload(User.groups))
         .where(User.id == current_user.id)
     )
     user = user_query.scalar_one()

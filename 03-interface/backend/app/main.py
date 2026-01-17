@@ -9,7 +9,7 @@ from app.db.session import engine
 from app.db.base import Base
 
 # IMPORTANT : Import des modèles pour que SQLAlchemy les connaisse
-from app.models import user, meeting
+from app.models import user, meeting, group
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         # Cette ligne crée les tables si elles n'existent pas
         await conn.run_sync(Base.metadata.create_all)
-    print("🗄️ [API] Tables SQL synchronisées (Users, Meetings).")
+    print("🗄️ [API] Tables SQL synchronisées (Users, Meetings, Groups).")
 
     yield
     
@@ -51,4 +51,4 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 async def status():
-    return {"status": "online", "role": "Interface API V5"}
+    return {"status": "online", "role": "Interface API V6 - Groups"}

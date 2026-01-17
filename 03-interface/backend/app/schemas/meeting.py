@@ -1,11 +1,11 @@
 """
-Schémas Pydantic pour le modèle Meeting avec support organisationnel.
+Schémas Pydantic pour le modèle Meeting avec groupes.
 """
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
-from app.schemas.organization import ServiceMinimal, ProjectMinimal
+from app.schemas.group import GroupMinimal
 
 
 # ============================================================
@@ -14,21 +14,19 @@ from app.schemas.organization import ServiceMinimal, ProjectMinimal
 
 class MeetingBase(BaseModel):
     title: Optional[str] = None
-    is_confidential: bool = False
 
 
 class MeetingCreate(MeetingBase):
     """Schéma pour la création d'un meeting (upload)."""
     original_filename: str
     s3_path: str
-    project_ids: Optional[List[int]] = None  # Tags de projet optionnels
+    group_ids: List[int]  # Requis : au moins un groupe
 
 
 class MeetingUpdate(BaseModel):
     """Schéma pour la mise à jour d'un meeting."""
     title: Optional[str] = None
-    is_confidential: Optional[bool] = None
-    project_ids: Optional[List[int]] = None  # Mise à jour des tags de projet
+    group_ids: Optional[List[int]] = None  # Mise à jour des groupes
 
 
 # ============================================================
@@ -48,9 +46,8 @@ class MeetingOut(MeetingBase):
 
 
 class MeetingWithContext(MeetingOut):
-    """Meeting avec contexte organisationnel complet."""
-    service: Optional[ServiceMinimal] = None
-    projects: List[ProjectMinimal] = []
+    """Meeting avec ses groupes."""
+    groups: List[GroupMinimal] = []
     transcription_text: Optional[str] = None
     updated_at: Optional[datetime] = None
 

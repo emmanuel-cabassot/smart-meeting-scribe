@@ -1,6 +1,6 @@
 """
-Upload and transcription endpoints.
-Handles file upload to S3 and dispatches processing tasks.
+Endpoints d'upload et de transcription.
+Gère l'upload de fichiers vers S3 et le dispatch des tâches de traitement.
 """
 import uuid
 import json
@@ -10,15 +10,16 @@ from botocore.exceptions import ClientError
 from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 from app.worker.broker import broker, kicker
 from app.core.config import settings
 from app.core.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.meeting import Meeting
-from app.models.organization import Project
+from app.models.group import Group
 from app.schemas.meeting import MeetingOut
-from sqlalchemy import select
 
 router = APIRouter()
 
@@ -42,29 +43,31 @@ except ClientError:
 
 @router.post("/", response_model=MeetingOut)
 async def start_transcription(
-    file: UploadFile = File(...),
-    title: Optional[str] = Form(None),
-    is_confidential: bool = Form(False),
-    project_ids: Optional[str] = Form(None),  # JSON string: "[1, 2]"
+    file: UploadFile = File(..., description="Fichier audio/vidéo à transcrire"),
+    title: Optional[str] = Form(None, description="Titre du meeting (optionnel)"),
+    group_ids: Optional[str] = Form(
+        None, 
+        description="JSON array des IDs de groupes. Exemple: [1, 2]",
+        examples=["[1]", "[1, 2, 3]"]
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Upload audio/video file and start transcription.
+    Upload un fichier audio/vidéo et lance la transcription.
     
-    1. Validates file format
-    2. Uploads to S3 (MinIO)
-    3. Creates Meeting in database (with service auto-set)
-    4. Dispatches task to Worker via Redis
+    1. Valide le format du fichier
+    2. Upload vers S3 (MinIO)
+    3. Crée le Meeting en base avec les groupes assignés
+    4. Dispatch la tâche au Worker via Redis
     
     Args:
-        file: Audio/video file
-        title: Optional meeting title
-        is_confidential: If true, only service members can see (default: false)
-        project_ids: JSON array of project IDs to tag, e.g. "[1, 2]"
+        file: Fichier audio/vidéo
+        title: Titre optionnel du meeting
+        group_ids: JSON array des IDs de groupes, ex: "[1, 2]"
     
     Returns:
-        Created Meeting object with task_id
+        Objet Meeting créé
     """
     # Validation du format
     if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
@@ -73,33 +76,62 @@ async def start_transcription(
             detail=f"Format non supporté. Extensions acceptées: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # Parse project_ids if provided
-    parsed_project_ids: List[int] = []
-    if project_ids:
-        try:
-            parsed_project_ids = json.loads(project_ids)
-            if not isinstance(parsed_project_ids, list):
-                parsed_project_ids = []
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="project_ids doit être un JSON array valide")
+    # Charge l'utilisateur avec ses groupes
+    user_query = await db.execute(
+        select(User)
+        .options(selectinload(User.groups))
+        .where(User.id == current_user.id)
+    )
+    user = user_query.scalar_one()
+
+    # Parse group_ids si fourni
+    parsed_group_ids: List[int] = []
+    print(f"🔍 [DEBUG] group_ids reçu: '{group_ids}' (type: {type(group_ids)})")
     
-    # Validate project membership (SECURITY)
-    valid_projects = []
-    if parsed_project_ids:
-        user_project_ids = {p.id for p in current_user.projects}
-        
-        for pid in parsed_project_ids:
-            if pid not in user_project_ids:
+    if group_ids:
+        try:
+            parsed_group_ids = json.loads(group_ids)
+            if not isinstance(parsed_group_ids, list):
                 raise HTTPException(
-                    status_code=403,
-                    detail=f"Vous ne pouvez pas taguer le projet {pid}: vous n'en êtes pas membre"
+                    status_code=400, 
+                    detail=f"group_ids doit être un JSON array (ex: [1, 2]), reçu: {group_ids}"
                 )
-        
-        # Fetch project objects
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"group_ids doit être un JSON array valide (ex: [1, 2]), reçu: {group_ids}"
+            )
+    
+    print(f"🔍 [DEBUG] parsed_group_ids: {parsed_group_ids}")
+    
+    # Si pas de group_ids fourni, utiliser tous les groupes de l'utilisateur
+    if not parsed_group_ids:
+        parsed_group_ids = [g.id for g in user.groups]
+        print(f"🔍 [DEBUG] Fallback - groupes utilisateur: {parsed_group_ids}")
+    
+    # Valide les groupes (SÉCURITÉ : l'utilisateur doit être membre)
+    user_group_ids = {g.id for g in user.groups}
+    valid_groups = []
+    
+    for gid in parsed_group_ids:
+        if gid not in user_group_ids:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Vous ne pouvez pas assigner le groupe {gid}: vous n'en êtes pas membre"
+            )
+    
+    # Récupère les objets groupe
+    if parsed_group_ids:
         result = await db.execute(
-            select(Project).where(Project.id.in_(parsed_project_ids))
+            select(Group).where(Group.id.in_(parsed_group_ids))
         )
-        valid_projects = list(result.scalars().all())
+        valid_groups = list(result.scalars().all())
+    
+    if not valid_groups:
+        raise HTTPException(
+            status_code=400,
+            detail="Au moins un groupe valide est requis"
+        )
 
     # Generate unique meeting ID
     safe_filename = file.filename.replace(" ", "_")
@@ -131,27 +163,20 @@ async def start_transcription(
         original_filename=file.filename,
         s3_path=s3_path,
         status="pending",
-        is_confidential=is_confidential,
         owner_id=current_user.id,
-        service_id=current_user.service_id,  # Auto-set from user
     )
-    
-    # Add validated projects
-    if valid_projects:
-        meeting.projects = valid_projects
+    meeting.groups = valid_groups
     
     db.add(meeting)
     await db.commit()
     await db.refresh(meeting)
     
-    print(f"💾 [API] Meeting créé en DB: ID={meeting.id}, service={current_user.service_id}")
+    group_names = [g.name for g in valid_groups]
+    print(f"💾 [API] Meeting créé en DB: ID={meeting.id}, groupes={group_names}")
 
     # === DISPATCH VERS REDIS ===
     try:
-        # Pass meeting.id to worker so it can update the DB
         task = await kicker.kiq(file_path=s3_path, meeting_id=str(meeting.id))
-        
-        # Store task_id in some way if needed (could add to meeting model later)
         print(f"🚀 [API] Tâche envoyée (task_id: {task.task_id}, meeting_id: {meeting.id})")
         
     except Exception as e:

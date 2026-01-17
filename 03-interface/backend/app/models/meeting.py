@@ -1,25 +1,24 @@
 """
-Modèle Meeting avec relations organisationnelles et logique de visibilité.
+Modèle Meeting avec visibilité basée sur les groupes.
 """
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
-from app.models.organization import meeting_project_link
+from app.models.group import meeting_group_link
 
 
 class Meeting(Base):
     """
-    Modèle Meeting avec support de visibilité matricielle.
+    Modèle Meeting avec visibilité par groupes.
     
     Règles de visibilité :
-    1. Les membres d'un service peuvent voir tous les meetings de leur service (sauf confidentiel)
-    2. Les membres d'un projet peuvent voir les meetings taggés sur leurs projets (sauf confidentiel)
-    3. Les meetings confidentiels ne sont visibles QUE par les membres du service
+    - Un meeting est visible par les membres des groupes auxquels il est assigné
+    - Un utilisateur voit le meeting s'il partage AU MOINS UN groupe avec lui
     
-    Règles de propriété :
-    - service_id est automatiquement défini sur le service du propriétaire
+    Règle de propriété :
+    - owner_id référence le créateur du meeting
     - owner_id utilise SET NULL à la suppression (le meeting persiste si l'utilisateur est supprimé)
     """
     __tablename__ = "meeting"
@@ -42,32 +41,21 @@ class Meeting(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # =====================================================
-    # Champs organisationnels (Logique matricielle)
+    # Relations
     # =====================================================
-    
-    # Indicateur de confidentialité
-    is_confidential = Column(Boolean, default=False, nullable=False)
     
     # Propriétaire (SET NULL à la suppression - le meeting persiste)
     owner_id = Column(
         Integer, 
         ForeignKey("user.id", ondelete="SET NULL"), 
-        nullable=True  # Nullable pour les meetings orphelins
+        nullable=True
     )
     owner = relationship("User", back_populates="meetings")
     
-    # Propriété du service (requis, auto-défini depuis le service du propriétaire)
-    service_id = Column(
-        Integer, 
-        ForeignKey("service.id"), 
-        nullable=True  # nullable pour la migration, devrait être requis
-    )
-    service = relationship("Service", back_populates="meetings")
-    
-    # Tags de projet (N:N, optionnel)
-    projects = relationship(
-        "Project",
-        secondary=meeting_project_link,
+    # Groupes (N:N) - Définit la visibilité
+    groups = relationship(
+        "Group",
+        secondary=meeting_group_link,
         back_populates="meetings"
     )
 
@@ -76,32 +64,24 @@ class Meeting(Base):
 
 
 # ============================================================
-# Logique de visibilité (utilisée dans services/meeting.py)
+# Logique de visibilité
 # ============================================================
 
 def can_user_access_meeting(user, meeting: Meeting) -> bool:
     """
-    Vérifie si un utilisateur peut accéder à un meeting selon les règles matricielles.
+    Vérifie si un utilisateur peut accéder à un meeting.
+    
+    Règle simple : L'utilisateur doit partager au moins un groupe avec le meeting.
     
     Args:
-        user: Objet User avec service_id et projects
+        user: Objet User avec ses groupes
         meeting: Objet Meeting dont on vérifie l'accès
     
     Returns:
         True si l'utilisateur peut accéder, False sinon
     """
-    # Règle 1 : Solidarité de service (même service = accès)
-    if meeting.service_id == user.service_id:
-        return True
+    user_group_ids = {g.id for g in user.groups}
+    meeting_group_ids = {g.id for g in meeting.groups}
     
-    # Règle 2 : Passerelle projet (projet partagé = accès, sauf si confidentiel)
-    if not meeting.is_confidential:
-        user_project_ids = {p.id for p in user.projects}
-        meeting_project_ids = {p.id for p in meeting.projects}
-        
-        # Vérifie l'intersection
-        if user_project_ids & meeting_project_ids:
-            return True
-    
-    # Pas d'accès
-    return False
+    # Intersection : au moins un groupe en commun ?
+    return bool(user_group_ids & meeting_group_ids)

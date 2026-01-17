@@ -1,20 +1,20 @@
 """
-Modèle User avec relations organisationnelles.
+Modèle User avec relations de groupes.
 """
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean
 from sqlalchemy.orm import relationship
 
 from app.db.base_class import Base
-from app.models.organization import user_project_link
+from app.models.group import user_group_link
 
 
 class User(Base):
     """
-    Modèle utilisateur avec support d'organisation matricielle.
+    Modèle utilisateur avec support de groupes.
     
-    Règles organisationnelles :
-    - Un utilisateur appartient à exactement UN Service (service_id)
-    - Un utilisateur peut participer à PLUSIEURS Projets (projects)
+    Règles :
+    - Un utilisateur peut appartenir à PLUSIEURS Groupes (N:N)
+    - La visibilité des meetings dépend des groupes partagés
     """
     __tablename__ = "user"
 
@@ -25,14 +25,10 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
 
-    # Organisation : Service (1:N) - Requis
-    service_id = Column(Integer, ForeignKey("service.id"), nullable=True)  # nullable pour la migration
-    service = relationship("Service", back_populates="users")
-
-    # Organisation : Projets (N:N) - Optionnel
-    projects = relationship(
-        "Project",
-        secondary=user_project_link,
+    # Groupes (N:N) - Remplace service_id et projects
+    groups = relationship(
+        "Group",
+        secondary=user_group_link,
         back_populates="members"
     )
 
@@ -43,6 +39,6 @@ class User(Base):
         return f"<User {self.email}>"
     
     @property
-    def project_ids(self) -> set[int]:
-        """Retourne l'ensemble des IDs de projets pour une recherche rapide."""
-        return {p.id for p in self.projects}
+    def group_ids(self) -> set[int]:
+        """Retourne l'ensemble des IDs de groupes pour une recherche rapide."""
+        return {g.id for g in self.groups}

@@ -1,8 +1,8 @@
-"""Initial migration - Create all tables with organization support
+"""Initial migration - Create all tables with Groups model
 
 Revision ID: 001_initial
 Revises: 
-Create Date: 2026-01-16
+Create Date: 2026-01-17
 
 """
 from typing import Sequence, Union
@@ -19,28 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # === SERVICE TABLE ===
+    # === GROUP TABLE ===
     op.create_table(
-        'service',
+        'group',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('description', sa.String(500), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_service_id'), 'service', ['id'], unique=False)
-    op.create_index(op.f('ix_service_name'), 'service', ['name'], unique=True)
-
-    # === PROJECT TABLE ===
-    op.create_table(
-        'project',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('description', sa.String(500), nullable=True),
+        sa.Column('type', sa.Enum('department', 'project', 'recurring', name='grouptype'), nullable=False, server_default='department'),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_project_id'), 'project', ['id'], unique=False)
-    op.create_index(op.f('ix_project_name'), 'project', ['name'], unique=True)
+    op.create_index(op.f('ix_group_id'), 'group', ['id'], unique=False)
+    op.create_index(op.f('ix_group_name'), 'group', ['name'], unique=True)
+    op.create_index(op.f('ix_group_type'), 'group', ['type'], unique=False)
 
     # === USER TABLE ===
     op.create_table(
@@ -51,8 +42,6 @@ def upgrade() -> None:
         sa.Column('full_name', sa.String(255), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('is_superuser', sa.Boolean(), nullable=True, server_default='false'),
-        sa.Column('service_id', sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(['service_id'], ['service.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_user_email'), 'user', ['email'], unique=True)
@@ -69,41 +58,38 @@ def upgrade() -> None:
         sa.Column('transcription_text', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('is_confidential', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('owner_id', sa.Integer(), nullable=True),
-        sa.Column('service_id', sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(['owner_id'], ['user.id'], ondelete='SET NULL'),
-        sa.ForeignKeyConstraint(['service_id'], ['service.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_meeting_id'), 'meeting', ['id'], unique=False)
     op.create_index(op.f('ix_meeting_status'), 'meeting', ['status'], unique=False)
     op.create_index(op.f('ix_meeting_title'), 'meeting', ['title'], unique=False)
 
-    # === USER <-> PROJECT ASSOCIATION TABLE ===
+    # === USER <-> GROUP ASSOCIATION TABLE ===
     op.create_table(
-        'user_project_link',
+        'user_group_link',
         sa.Column('user_id', sa.Integer(), nullable=False),
-        sa.Column('project_id', sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(['project_id'], ['project.id'], ondelete='CASCADE'),
+        sa.Column('group_id', sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(['group_id'], ['group.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['user.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('user_id', 'project_id')
+        sa.PrimaryKeyConstraint('user_id', 'group_id')
     )
 
-    # === MEETING <-> PROJECT ASSOCIATION TABLE ===
+    # === MEETING <-> GROUP ASSOCIATION TABLE ===
     op.create_table(
-        'meeting_project_link',
+        'meeting_group_link',
         sa.Column('meeting_id', sa.Integer(), nullable=False),
-        sa.Column('project_id', sa.Integer(), nullable=False),
+        sa.Column('group_id', sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(['meeting_id'], ['meeting.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['project_id'], ['project.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('meeting_id', 'project_id')
+        sa.ForeignKeyConstraint(['group_id'], ['group.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('meeting_id', 'group_id')
     )
 
 
 def downgrade() -> None:
-    op.drop_table('meeting_project_link')
-    op.drop_table('user_project_link')
+    op.drop_table('meeting_group_link')
+    op.drop_table('user_group_link')
     op.drop_index(op.f('ix_meeting_title'), table_name='meeting')
     op.drop_index(op.f('ix_meeting_status'), table_name='meeting')
     op.drop_index(op.f('ix_meeting_id'), table_name='meeting')
@@ -111,9 +97,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_user_id'), table_name='user')
     op.drop_index(op.f('ix_user_email'), table_name='user')
     op.drop_table('user')
-    op.drop_index(op.f('ix_project_name'), table_name='project')
-    op.drop_index(op.f('ix_project_id'), table_name='project')
-    op.drop_table('project')
-    op.drop_index(op.f('ix_service_name'), table_name='service')
-    op.drop_index(op.f('ix_service_id'), table_name='service')
-    op.drop_table('service')
+    op.drop_index(op.f('ix_group_type'), table_name='group')
+    op.drop_index(op.f('ix_group_name'), table_name='group')
+    op.drop_index(op.f('ix_group_id'), table_name='group')
+    op.drop_table('group')
+    op.execute('DROP TYPE IF EXISTS grouptype')

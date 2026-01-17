@@ -1,10 +1,10 @@
 """
-Schémas Pydantic pour le modèle User avec contexte organisationnel.
+Schémas Pydantic pour le modèle User avec contexte de groupes.
 """
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 
-from app.schemas.organization import ServiceMinimal, ProjectMinimal
+from app.schemas.group import GroupMinimal
 
 
 # ============================================================
@@ -35,7 +35,7 @@ class UserUpdate(BaseModel):
 # ============================================================
 
 class UserOut(UserBase):
-    """Réponse utilisateur basique (sans info organisationnelle)."""
+    """Réponse utilisateur basique (sans groupes)."""
     id: int
     is_superuser: bool = False
 
@@ -45,11 +45,10 @@ class UserOut(UserBase):
 
 class UserWithContext(UserOut):
     """
-    Réponse utilisateur avec contexte organisationnel complet.
+    Réponse utilisateur avec ses groupes.
     Utilisé pour l'endpoint /users/me pour peupler l'état du frontend.
     """
-    service: Optional[ServiceMinimal] = None
-    projects: List[ProjectMinimal] = []
+    groups: List[GroupMinimal] = []
 
     class Config:
         from_attributes = True
@@ -60,10 +59,9 @@ class UserWithContext(UserOut):
 # ============================================================
 
 class UserAdminUpdate(BaseModel):
-    """Mise à jour utilisateur réservée aux admins (peut changer service/projets)."""
+    """Mise à jour utilisateur réservée aux admins (peut changer les groupes)."""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
-    service_id: Optional[int] = None
-    project_ids: Optional[List[int]] = None
+    group_ids: Optional[List[int]] = None

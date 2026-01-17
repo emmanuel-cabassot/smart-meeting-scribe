@@ -1,14 +1,14 @@
 """
-Logique métier pour les meetings avec visibilité matricielle.
+Logique métier pour les meetings avec visibilité par groupes.
 """
 from typing import List, Optional
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.models.meeting import Meeting, can_user_access_meeting
-from app.models.organization import Project
+from app.models.group import Group
 from app.models.user import User
 from app.schemas.meeting import MeetingCreate, MeetingUpdate
 
@@ -18,8 +18,7 @@ async def get_meeting(db: AsyncSession, meeting_id: int) -> Optional[Meeting]:
     result = await db.execute(
         select(Meeting)
         .options(
-            selectinload(Meeting.service),
-            selectinload(Meeting.projects),
+            selectinload(Meeting.groups),
             selectinload(Meeting.owner)
         )
         .where(Meeting.id == meeting_id)
@@ -32,65 +31,41 @@ async def get_meetings_for_user(
     user: User,
     skip: int = 0,
     limit: int = 50,
-    service_id: Optional[int] = None,
-    project_id: Optional[int] = None,
-    status: Optional[str] = None,
+    group_id: Optional[int] = None,
+    status_filter: Optional[str] = None,
 ) -> List[Meeting]:
     """
-    Récupère les meetings visibles pour un utilisateur selon les règles matricielles :
-    1. Meetings du service de l'utilisateur (si l'utilisateur a un service)
-    2. Meetings taggés sur les projets de l'utilisateur (si non confidentiels)
+    Récupère les meetings visibles pour un utilisateur.
     
-    Filtres optionnels (appliqués en plus de la visibilité) :
-    - service_id : Filtrer par service spécifique
-    - project_id : Filtrer par projet spécifique
-    - status : Filtrer par statut de transcription
+    Règle : Un utilisateur voit un meeting s'il partage au moins un groupe avec lui.
     
-    Cas limite : Si l'utilisateur n'a pas de service_id, seule la visibilité par projet s'applique.
+    Filtres optionnels :
+    - group_id : Filtrer par groupe spécifique
+    - status_filter : Filtrer par statut de transcription
     """
-    # Récupère les IDs de projets de l'utilisateur
-    user_project_ids = [p.id for p in user.projects] if user.projects else []
+    # Récupère les IDs de groupes de l'utilisateur
+    user_group_ids = [g.id for g in user.groups] if user.groups else []
     
-    # Construit les conditions de visibilité
-    visibility_conditions = []
-    
-    # Condition A : Même service (seulement si l'utilisateur a un service)
-    if user.service_id is not None:
-        visibility_conditions.append(Meeting.service_id == user.service_id)
-    
-    # Condition B : Projet partagé (non confidentiel)
-    if user_project_ids:
-        visibility_conditions.append(
-            and_(
-                Meeting.is_confidential == False,
-                Meeting.projects.any(Project.id.in_(user_project_ids))
-            )
-        )
-    
-    # Si pas de conditions de visibilité, l'utilisateur ne voit rien
-    if not visibility_conditions:
+    # Si pas de groupes, l'utilisateur ne voit rien
+    if not user_group_ids:
         return []
     
-    # Construit la requête de base avec la visibilité
+    # Condition de visibilité : le meeting a au moins un groupe de l'utilisateur
     query = (
         select(Meeting)
         .options(
-            selectinload(Meeting.service),
-            selectinload(Meeting.projects),
+            selectinload(Meeting.groups),
             selectinload(Meeting.owner)
         )
-        .where(or_(*visibility_conditions))
+        .where(Meeting.groups.any(Group.id.in_(user_group_ids)))
     )
     
     # Applique les filtres optionnels
-    if service_id is not None:
-        query = query.where(Meeting.service_id == service_id)
+    if group_id is not None:
+        query = query.where(Meeting.groups.any(Group.id == group_id))
     
-    if project_id is not None:
-        query = query.where(Meeting.projects.any(Project.id == project_id))
-    
-    if status is not None:
-        query = query.where(Meeting.status == status)
+    if status_filter is not None:
+        query = query.where(Meeting.status == status_filter)
     
     # Applique l'ordre et la pagination
     query = (
@@ -112,41 +87,38 @@ async def create_meeting(
     """
     Crée un meeting avec validation de sécurité.
     
-    Règles de sécurité :
-    - service_id est automatiquement défini sur le service de l'utilisateur
-    - project_ids doivent être des projets dont l'utilisateur est membre
+    Règle : L'utilisateur doit être membre des groupes qu'il assigne au meeting.
     """
-    # Valide les tags de projet (SÉCURITÉ : l'utilisateur doit être membre)
-    valid_projects = []
-    if meeting_in.project_ids:
-        user_project_ids = {p.id for p in current_user.projects}
-        
-        for pid in meeting_in.project_ids:
-            if pid not in user_project_ids:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Impossible de taguer le projet {pid} : vous n'êtes pas membre"
-                )
-        
-        # Récupère les objets projet
-        result = await db.execute(
-            select(Project).where(Project.id.in_(meeting_in.project_ids))
+    # Valide les groupes (SÉCURITÉ : l'utilisateur doit être membre)
+    user_group_ids = {g.id for g in current_user.groups}
+    
+    for gid in meeting_in.group_ids:
+        if gid not in user_group_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Impossible d'assigner le groupe {gid} : vous n'êtes pas membre"
+            )
+    
+    # Récupère les objets groupe
+    result = await db.execute(
+        select(Group).where(Group.id.in_(meeting_in.group_ids))
+    )
+    groups = list(result.scalars().all())
+    
+    if not groups:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Au moins un groupe valide est requis"
         )
-        valid_projects = list(result.scalars().all())
     
     # Crée le meeting
     meeting = Meeting(
         title=meeting_in.title,
         original_filename=meeting_in.original_filename,
         s3_path=meeting_in.s3_path,
-        is_confidential=meeting_in.is_confidential,
         owner_id=current_user.id,
-        service_id=current_user.service_id,  # Auto-défini depuis l'utilisateur
     )
-    
-    # Ajoute les projets validés
-    if valid_projects:
-        meeting.projects = valid_projects
+    meeting.groups = groups
     
     db.add(meeting)
     await db.commit()
@@ -172,27 +144,25 @@ async def update_meeting(
             detail="Non autorisé à modifier ce meeting"
         )
     
-    # Met à jour les champs de base
+    # Met à jour le titre
     if meeting_in.title is not None:
         meeting.title = meeting_in.title
-    if meeting_in.is_confidential is not None:
-        meeting.is_confidential = meeting_in.is_confidential
     
-    # Met à jour les tags de projet (avec validation de sécurité)
-    if meeting_in.project_ids is not None:
-        user_project_ids = {p.id for p in current_user.projects}
+    # Met à jour les groupes (avec validation de sécurité)
+    if meeting_in.group_ids is not None:
+        user_group_ids = {g.id for g in current_user.groups}
         
-        for pid in meeting_in.project_ids:
-            if pid not in user_project_ids and not current_user.is_superuser:
+        for gid in meeting_in.group_ids:
+            if gid not in user_group_ids and not current_user.is_superuser:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Impossible de taguer le projet {pid} : vous n'êtes pas membre"
+                    detail=f"Impossible d'assigner le groupe {gid} : vous n'êtes pas membre"
                 )
         
         result = await db.execute(
-            select(Project).where(Project.id.in_(meeting_in.project_ids))
+            select(Group).where(Group.id.in_(meeting_in.group_ids))
         )
-        meeting.projects = list(result.scalars().all())
+        meeting.groups = list(result.scalars().all())
     
     await db.commit()
     await db.refresh(meeting)

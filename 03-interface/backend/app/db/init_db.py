@@ -1,86 +1,62 @@
 """
-Database initialization script.
-Creates default Services, Projects, and SuperUser on first run.
+Script d'initialisation de la base de données.
+Crée les Groupes par défaut et le SuperUser au premier lancement.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.security import get_password_hash
 from app.models.user import User
-from app.models.organization import Service, Project
+from app.models.group import Group, GroupType
 
 
-# Default data for seeding
-DEFAULT_SERVICES = [
-    {"name": "R&D", "description": "Research & Development"},
-    {"name": "Sales", "description": "Sales & Business Development"},
-    {"name": "Marketing", "description": "Marketing & Communications"},
-    {"name": "HR", "description": "Human Resources"},
-    {"name": "Finance", "description": "Finance & Accounting"},
+# Groupes par défaut avec leurs types (valeurs string lowercase)
+DEFAULT_GROUPS = [
+    {"name": "Tous", "description": "Groupe par défaut - Tous les utilisateurs", "type": "department"},
+    {"name": "Direction", "description": "Équipe de direction", "type": "department"},
+    {"name": "R&D", "description": "Recherche & Développement", "type": "department"},
+    {"name": "Marketing", "description": "Marketing & Communications", "type": "department"},
+    {"name": "Commercial", "description": "Équipe commerciale", "type": "department"},
+    {"name": "RH", "description": "Ressources Humaines", "type": "department"},
+    {"name": "Finance", "description": "Finance & Comptabilité", "type": "department"},
+    # Exemples de groupes projets/récurrents
+    {"name": "COMOP", "description": "Comité opérationnel hebdomadaire", "type": "recurring"},
+    {"name": "Café AGAM", "description": "Présentation hebdomadaire", "type": "recurring"},
 ]
 
-DEFAULT_PROJECTS = [
-    {"name": "Lancement V5", "description": "Nouvelle version majeure du produit"},
-    {"name": "Audit Sécurité", "description": "Audit de sécurité annuel"},
-]
-
-# SuperUser configuration
+# Configuration SuperUser
 FIRST_SUPERUSER_EMAIL = "admin@example.com"
-FIRST_SUPERUSER_PASSWORD = "admin123"  # Change in production!
+FIRST_SUPERUSER_PASSWORD = "admin123"  # Changer en production !
 
 
-async def init_services(db: AsyncSession) -> dict[str, Service]:
-    """Create default services if they don't exist."""
-    services = {}
+async def init_groups(db: AsyncSession) -> dict[str, Group]:
+    """Crée les groupes par défaut s'ils n'existent pas."""
+    groups = {}
     
-    for service_data in DEFAULT_SERVICES:
+    for group_data in DEFAULT_GROUPS:
         result = await db.execute(
-            select(Service).where(Service.name == service_data["name"])
+            select(Group).where(Group.name == group_data["name"])
         )
-        service = result.scalar_one_or_none()
+        group = result.scalar_one_or_none()
         
-        if not service:
-            service = Service(**service_data)
-            db.add(service)
-            print(f"✅ Created Service: {service_data['name']}")
+        if not group:
+            group = Group(**group_data)
+            db.add(group)
+            print(f"✅ Groupe créé : {group_data['name']}")
         else:
-            print(f"ℹ️  Service already exists: {service_data['name']}")
+            print(f"ℹ️  Groupe existant : {group_data['name']}")
         
-        services[service_data["name"]] = service
+        groups[group_data["name"]] = group
     
     await db.commit()
-    return services
-
-
-async def init_projects(db: AsyncSession) -> dict[str, Project]:
-    """Create default projects if they don't exist."""
-    projects = {}
-    
-    for project_data in DEFAULT_PROJECTS:
-        result = await db.execute(
-            select(Project).where(Project.name == project_data["name"])
-        )
-        project = result.scalar_one_or_none()
-        
-        if not project:
-            project = Project(**project_data)
-            db.add(project)
-            print(f"✅ Created Project: {project_data['name']}")
-        else:
-            print(f"ℹ️  Project already exists: {project_data['name']}")
-        
-        projects[project_data["name"]] = project
-    
-    await db.commit()
-    return projects
+    return groups
 
 
 async def init_superuser(
     db: AsyncSession, 
-    default_service: Service,
-    all_projects: list[Project]
+    default_groups: list[Group]
 ) -> User:
-    """Create superuser if doesn't exist, assign to R&D and all projects."""
+    """Crée le superuser s'il n'existe pas et l'assigne aux groupes."""
     result = await db.execute(
         select(User).where(User.email == FIRST_SUPERUSER_EMAIL)
     )
@@ -92,37 +68,32 @@ async def init_superuser(
             hashed_password=get_password_hash(FIRST_SUPERUSER_PASSWORD),
             is_active=True,
             is_superuser=True,
-            service_id=default_service.id,
         )
-        # Add all projects to superuser
-        user.projects = all_projects
+        # Ajoute les groupes par défaut au superuser
+        user.groups = default_groups
         db.add(user)
         await db.commit()
-        print(f"✅ Created SuperUser: {FIRST_SUPERUSER_EMAIL}")
+        print(f"✅ SuperUser créé : {FIRST_SUPERUSER_EMAIL}")
     else:
-        print(f"ℹ️  SuperUser already exists: {FIRST_SUPERUSER_EMAIL}")
+        print(f"ℹ️  SuperUser existant : {FIRST_SUPERUSER_EMAIL}")
     
     return user
 
 
 async def init_db(db: AsyncSession) -> None:
     """
-    Main initialization function.
-    Call this on application startup.
+    Fonction principale d'initialisation.
+    Appelée au démarrage de l'application.
     """
-    print("\n🚀 Initializing database...")
+    print("\n🚀 Initialisation de la base de données...")
     
-    # 1. Create Services
-    services = await init_services(db)
+    # 1. Créer les Groupes
+    groups = await init_groups(db)
     
-    # 2. Create Projects
-    projects = await init_projects(db)
-    
-    # 3. Create SuperUser (assigned to R&D + all projects)
+    # 2. Créer le SuperUser (assigné à Tous + Direction)
     await init_superuser(
         db, 
-        default_service=services["R&D"],
-        all_projects=list(projects.values())
+        default_groups=[groups["Tous"], groups["Direction"]]
     )
     
-    print("✅ Database initialization complete!\n")
+    print("✅ Initialisation terminée !\n")

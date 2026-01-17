@@ -6,7 +6,7 @@ Services d'infrastructure partagés pour Smart Meeting Scribe.
 
 | Service | Image | Port | Usage |
 |---------|-------|------|-------|
-| **PostgreSQL** | `postgres:16-alpine` | `5432` | Base de données relationnelle (Users, Meetings, Services, Projects) |
+| **PostgreSQL** | `postgres:16-alpine` | `5432` | Base de données relationnelle (Users, Meetings, Groups) |
 | **Redis** | `redis:7-alpine` | `6379` | Broker TaskIQ (queue de tâches) |
 | **MinIO** | `minio/minio:latest` | `9000`, `9001` | Stockage S3 (fichiers, résultats, identity-bank) |
 | **Qdrant** | `qdrant/qdrant:v1.7.4` | `6333` | Base vectorielle (embeddings pour RAG futur) |
@@ -40,14 +40,23 @@ docker compose ps
 
 ## 🗄️ Tables PostgreSQL
 
+### Modèle V6.0 (Groups)
+
 | Table | Description |
 |-------|-------------|
-| `user` | Utilisateurs (email, password, service_id) |
+| `user` | Utilisateurs (email, password) |
 | `meeting` | Réunions (s3_path, status, transcription) |
-| `service` | Départements (R&D, Sales, Marketing...) |
-| `project` | Projets transversaux |
-| `user_project_link` | Relation N:N User ↔ Project |
-| `meeting_project_link` | Relation N:N Meeting ↔ Project |
+| `group` | Groupes (name, type: department/project/recurring) |
+| `user_group_link` | Relation N:N User ↔ Group |
+| `meeting_group_link` | Relation N:N Meeting ↔ Group |
+
+### Types de Groupes
+
+| Type | Description |
+|------|-------------|
+| `department` | Départements (R&D, Marketing, Direction...) |
+| `project` | Projets transversaux temporaires |
+| `recurring` | Réunions récurrentes (COMOP, Daily...) |
 
 ## 💾 Volumes
 

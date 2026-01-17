@@ -90,17 +90,29 @@ async def start_transcription(
     
     if group_ids:
         try:
+            # Essai 1 : JSON Array standard "[1, 2]"
             parsed_group_ids = json.loads(group_ids)
             if not isinstance(parsed_group_ids, list):
+                # Si c'est un seul int "1" envoyé comme JSON
+                if isinstance(parsed_group_ids, int):
+                    parsed_group_ids = [parsed_group_ids]
+                else:
+                    raise ValueError("Not a list")
+                    
+        except (json.JSONDecodeError, ValueError):
+            # Essai 2 : Liste séparée par des virgules "1,2"
+            try:
+                # Nettoie les crochets éventuels et sépare par virgule
+                cleaned = group_ids.strip("[]")
+                if cleaned:
+                    parsed_group_ids = [int(x.strip()) for x in cleaned.split(",")]
+                else:
+                    parsed_group_ids = []
+            except ValueError:
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"group_ids doit être un JSON array (ex: [1, 2]), reçu: {group_ids}"
+                    detail=f"Format invalide. Utilisez '[1, 2]' ou '1,2'. Reçu: {group_ids}"
                 )
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"group_ids doit être un JSON array valide (ex: [1, 2]), reçu: {group_ids}"
-            )
     
     print(f"🔍 [DEBUG] parsed_group_ids: {parsed_group_ids}")
     

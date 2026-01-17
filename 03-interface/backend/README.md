@@ -1,6 +1,6 @@
 # 🔌 Backend API - FastAPI
 
-API Gateway pour Smart Meeting Scribe V5.4 avec support organisationnel (Services & Projets).
+API Gateway pour Smart Meeting Scribe V6.0 avec support des Groupes (Départements, Projets, Réunions Récurrentes).
 
 ## 🏗️ Architecture
 
@@ -18,33 +18,33 @@ backend/
 │   │   ├── base_class.py            # Classe Base SQLAlchemy
 │   │   ├── base.py                  # Import des modèles (Alembic)
 │   │   ├── session.py               # AsyncPG PostgreSQL
-│   │   └── init_db.py               # Script de seed (Services, Projets)
+│   │   └── init_db.py               # Script de seed (Groupes par défaut)
 │   │
 │   ├── models/                      # 📊 Modèles SQLAlchemy
-│   │   ├── user.py                  # User (avec service_id, projects)
-│   │   ├── meeting.py               # Meeting (avec is_confidential, projects)
-│   │   └── organization.py          # Service, Project, tables M2M
+│   │   ├── user.py                  # User
+│   │   ├── meeting.py               # Meeting
+│   │   └── group.py                 # Group (Type: Department, Project, Recurring)
 │   │
 │   ├── schemas/                     # 📝 Schemas Pydantic
-│   │   ├── user.py                  # UserOut, UserWithContext
-│   │   ├── meeting.py               # MeetingOut, MeetingWithContext
-│   │   ├── organization.py          # ServiceRead, ProjectRead
+│   │   ├── user.py                  # UserOut
+│   │   ├── meeting.py               # MeetingOut
+│   │   ├── group.py                 # GroupRead
 │   │   └── token.py                 # Token JWT
 │   │
 │   ├── services/                    # 🧠 Logique métier (CRUD)
 │   │   ├── auth.py                  # Authentification
 │   │   ├── user.py                  # CRUD User
-│   │   ├── meeting.py               # Visibilité matricielle
-│   │   └── organization.py          # CRUD Services/Projets
+│   │   ├── meeting.py               # Gestion Meetings
+│   │   └── group.py                 # CRUD Groupes
 │   │
 │   ├── api/v1/                      # 🌐 Routes API
 │   │   ├── router.py                # Agrège tous les endpoints
 │   │   └── endpoints/
 │   │       ├── auth.py              # /auth (login, register)
-│   │       ├── users.py             # /users (profil avec contexte)
+│   │       ├── users.py             # /users (profil)
 │   │       ├── transcribe.py        # /process (upload sécurisé)
-│   │       ├── meetings.py          # /meetings (CRUD + visibilité)
-│   │       ├── organization.py      # /org (services, projects)
+│   │       ├── meetings.py          # /meetings (CRUD)
+│   │       ├── groups.py            # /groups (CRUD)
 │   │       └── webhook.py           # /internal/webhook (callback Worker)
 │   │
 │   └── worker/                      # 🔄 Background tasks (TaskIQ)
@@ -52,7 +52,7 @@ backend/
 │
 ├── alembic/                         # 🔄 Migrations DB
 │   ├── versions/
-│   │   └── 001_initial.py           # Migration initiale
+│   │   └── 001_initial.py           # Migration initiale (Group model)
 │   └── env.py
 │
 ├── tests/                           # 🧪 Tests
@@ -75,7 +75,7 @@ backend/
 
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| `GET` | `/me` | ✅ | Profil utilisateur avec service et projets |
+| `GET` | `/me` | ✅ | Profil utilisateur avec ses groupes |
 
 ### Process (`/api/v1/process`)
 
@@ -84,35 +84,33 @@ backend/
 | `POST` | `/` | ✅ | Upload audio → créer Meeting → dispatch Worker |
 | `GET` | `/status/{task_id}` | ❌ | Polling du statut de transcription |
 
+**Paramètres POST `/` :**
+- `file`: Fichier audio/vidéo
+- `title`: Titre (optionnel)
+- `group_ids`: Liste des IDs de groupes (ex: `[1, 2]`) - **JSON Array requis**
+
 ### Meetings (`/api/v1/meetings`)
 
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| `GET` | `/` | ✅ | Liste meetings visibles (logique matricielle) |
-| `GET` | `/?service_id=1` | ✅ | Filtre par service |
-| `GET` | `/?project_id=2` | ✅ | Filtre par projet |
+| `GET` | `/` | ✅ | Liste meetings (visibles selon groupes) |
+| `GET` | `/?group_id=1` | ✅ | Filtre par groupe |
 | `GET` | `/?status=pending` | ✅ | Filtre par status |
 | `GET` | `/mine` | ✅ | Liste mes meetings uniquement |
-| `GET` | `/{id}` | ✅ | Détail d'un meeting (check visibilité) |
+| `GET` | `/{id}` | ✅ | Détail d'un meeting |
 | `PATCH` | `/{id}` | ✅ Owner | Modifier un meeting |
 | `DELETE` | `/{id}` | ✅ Owner | Supprimer un meeting |
 | `GET` | `/stats/count` | ✅ | Compteur de meetings |
 
-### Organization (`/api/v1/org`)
+### Groups (`/api/v1/groups`)
 
 | Méthode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| `GET` | `/services` | ✅ | Liste tous les services |
-| `GET` | `/services/{id}` | ✅ | Détail d'un service |
-| `POST` | `/services` | 🔐 Admin | Créer un service |
-| `PATCH` | `/services/{id}` | 🔐 Admin | Modifier un service |
-| `DELETE` | `/services/{id}` | 🔐 Admin | Supprimer un service |
-| `GET` | `/projects` | ✅ | Liste tous les projets |
-| `GET` | `/projects/me` | ✅ | Projets de l'utilisateur |
-| `GET` | `/projects/{id}` | ✅ | Détail d'un projet |
-| `POST` | `/projects` | 🔐 Admin | Créer un projet |
-| `PATCH` | `/projects/{id}` | 🔐 Admin | Modifier un projet |
-| `DELETE` | `/projects/{id}` | 🔐 Admin | Supprimer un projet |
+| `GET` | `/` | ✅ | Liste tous les groupes |
+| `GET` | `/{id}` | ✅ | Détail d'un groupe |
+| `POST` | `/` | 🔐 Admin | Créer un groupe |
+| `PATCH` | `/{id}` | 🔐 Admin | Modifier un groupe |
+| `DELETE` | `/{id}` | 🔐 Admin | Supprimer un groupe |
 
 ### Internal Webhook (`/api/v1/internal/webhook`)
 
@@ -122,72 +120,64 @@ backend/
 
 > ⚠️ **Sécurité** : Le webhook requiert le header `X-Internal-Key` avec la clé interne.
 
-## 🧠 Logique Matricielle
+## 🏢 Modèle de Groupes
 
-Le système utilise une double appartenance :
-- **Service** (1:N) : Département hiérarchique (R&D, Sales...)
-- **Projet** (N:N) : Mission transversale (Lancement V5...)
+Le système utilise un modèle de **Groupes Unifiés** pour simplifier la gestion des droits, inspiré d'Azure AD.
 
-### Algorithme de visibilité
+### Types de Groupes
+1.  **Department** (`department`): Structure hiérarchique (R&D, Marketing, Direction...).
+2.  **Project** (`project`): Projets transversaux ou temporaires.
+3.  **Recurring** (`recurring`): Réunions récurrentes (COMOP, Daily...).
 
-Un utilisateur voit un meeting si :
-- ✅ Il est dans le **même Service** que le meeting
-- ✅ OU il partage un **Projet** avec le meeting (sauf si `is_confidential=true`)
+### Règles
+- Un **Meeting** appartient à un ou plusieurs **Groupes**.
+- Un **User** appartient à un ou plusieurs **Groupes**.
+- Un User voit un Meeting si ils ont au moins un **Groupe en commun** (ou si il est le propriétaire).
 
-Voir [ORGANIZATION_LOGIC.md](../ORGANIZATION_LOGIC.md) pour les détails.
-
-## 🔐 Authentification
+## 🔐 Authentification & Usage
 
 ```bash
 # 1. Login
 TOKEN=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
   -d "username=admin@example.com&password=admin123" | jq -r '.access_token')
 
-# 2. Profil utilisateur avec contexte
-curl http://localhost:5000/api/v1/users/me \
-  -H "Authorization: Bearer $TOKEN"
-
-# 3. Upload un fichier audio (avec auth)
+# 2. Upload un fichier audio
+# IMPORTANT : group_ids doit être un tableau JSON stringify : "[1, 2]"
 curl -X POST http://localhost:5000/api/v1/process/ \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@mon_audio.mp3" \
-  -F "title=Ma réunion"
+  -F "title=Comité Direction" \
+  -F "group_ids=[1, 2]"
 
-# 4. Lister mes meetings visibles (avec filtres)
+# 3. Lister les meetings
 curl "http://localhost:5000/api/v1/meetings/?status=completed" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 🐳 Docker
+## �️ Gestion (Manage Script)
+
+Utilisez le script `manage.sh` à la racine pour gérer le projet :
 
 ```bash
-# Build
-docker compose build backend
+# Lancer tous les services
+./manage.sh start
 
-# Run
-docker compose up -d
+# Voir les logs
+./manage.sh logs
 
-# Logs
-docker logs sms_api -f
+# Réinitialiser la base de données (SUPPRIME TOUTES LES DONNÉES)
+./manage.sh reset-db
 ```
-
-Au démarrage, le script `start.sh` :
-1. Attend PostgreSQL
-2. Exécute les migrations Alembic
-3. Seed la DB (Services, Projets, Admin)
-4. Lance Uvicorn
 
 ## 🌱 Données de Seed
 
-| Type | Valeurs |
-|------|---------|
-| Services | R&D, Sales, Marketing, HR, Finance |
-| Projets | Lancement V5, Audit Sécurité |
-| Admin | `admin@example.com` / `admin123` |
+| Groupe | Type | Description |
+|--------|------|-------------|
+| Tous | `department` | Groupe par défaut |
+| Direction | `department` | Équipe de direction |
+| R&D | `department` | Recherche & Développement |
+| Marketing | `department` | Marketing & Com |
+| COMOP | `recurring` | Comité opérationnel |
+| Café AGAM | `recurring` | Présentation hebdo |
 
-## 📚 Documentation
-
-| URL | Description |
-|-----|-------------|
-| http://localhost:5000/docs | Swagger UI |
-| http://localhost:5000/redoc | ReDoc |
+**Admin par défaut** : `admin@example.com` / `admin123`

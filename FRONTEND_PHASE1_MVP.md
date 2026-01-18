@@ -9,7 +9,7 @@
 | Info | Valeur |
 |------|--------|
 | **Durée estimée** | ~1.5 semaines (base existante) |
-| **Statut** | 🔄 En cours (~30% fait) |
+| **Statut** | 🔄 En cours (~65% fait) |
 | **Dépendances** | Backend API fonctionnel ✅ |
 | **Code source** | `03-interface/frontend-nextjs/` |
 
@@ -39,46 +39,43 @@ Le projet a une base fonctionnelle :
 ### 1. Setup Projet ~~(0.5 jour)~~ → FAIT
 
 - [x] Créer le projet Next.js 16 ✅ Existe dans `03-interface/frontend-nextjs/`
-- [ ] Initialiser shadcn/ui
-  ```bash
-  cd 03-interface/frontend-nextjs
-  npx shadcn-ui@latest init
-  ```
-- [ ] Configurer le thème dark (globals.css)
-- [ ] Ajouter les fonts (Inter, JetBrains Mono)
+- [x] Initialiser shadcn/ui ✅ Composants créés manuellement dans `components/ui/`
+- [x] Configurer le thème dark (globals.css) ✅ Design system complet
+- [x] Ajouter les fonts (Inter, JetBrains Mono) ✅ Dans `layout.tsx`
 - [x] Structure de base (`components/`, `lib/`, `hooks/`) ✅ Existe
 
-### 2. Design System & Tokens (0.5 jour)
+### 2. Design System & Tokens ~~(0.5 jour)~~ → FAIT
 
-- [ ] Configurer les CSS variables dark theme dans `globals.css`
+- [x] Configurer les CSS variables dark theme dans `globals.css` ✅
   - Backgrounds (--bg-primary, --bg-secondary, etc.)
   - Accents (--accent-primary, --accent-success, etc.)
   - Text colors, Borders
-- [ ] Installer les composants shadcn nécessaires :
-  ```bash
-  npx shadcn-ui@latest add button card input badge dialog toast progress dropdown-menu
-  ```
-- [x] `lib/utils.ts` avec `cn()` ✅ Existe
+- [x] Composants shadcn créés : ✅
+  - `button.tsx`, `card.tsx`, `input.tsx`, `label.tsx`
+  - `badge.tsx`, `progress.tsx`, `dialog.tsx`
+  - `dropdown-menu.tsx`, `toast.tsx`, `toaster.tsx`
+- [x] `lib/utils.ts` avec `cn()`, `formatDate()`, `formatDuration()` ✅
 
-### 3. Layout Principal (1 jour)
+### 3. Layout Principal ~~(1 jour)~~ → FAIT
 
-- [ ] `components/layout/MainLayout.tsx` - Structure 3 zones
-- [ ] `components/layout/Sidebar.tsx` - Navigation avec groupes
-- [ ] `components/layout/TopHeader.tsx` - Search + Upload button + User dropdown
-- [ ] `components/layout/UserDropdown.tsx` - Menu utilisateur (settings, logout)
-- [ ] `components/layout/Breadcrumb.tsx` - Fil d'ariane
-- [ ] `app/(dashboard)/layout.tsx` - Layout protégé avec MainLayout
-- [ ] Refactorer `app/page.tsx` pour utiliser le nouveau layout
+- [x] `components/layout/MainLayout.tsx` - Structure 3 zones ✅
+- [x] `components/layout/Sidebar.tsx` - Navigation avec groupes ✅
+- [x] `components/layout/TopHeader.tsx` - Search + Upload button + User dropdown ✅
+- [x] `components/layout/UserDropdown.tsx` - Menu utilisateur (settings, logout) ✅
+- [x] `components/layout/Breadcrumb.tsx` - Fil d'ariane ✅
+- [x] `app/(dashboard)/layout.tsx` - Layout protégé avec MainLayout ✅
+- [x] `app/(dashboard)/page.tsx` - Dashboard avec empty state ✅
 
 ### 4. Authentification (1 jour)
 
-- [ ] `lib/api.ts` - Wrapper fetch avec gestion token
+- [x] `lib/api.ts` - Wrapper fetch avec gestion token ✅
 - [x] `lib/upload.ts` - Upload avec progress ✅ Existe (`hooks/use-upload.ts`)
-- [ ] `stores/auth-store.ts` - Zustand store (token, user, isAuthenticated)
-- [ ] `hooks/use-auth.ts` - Hook login/logout/register
-- [ ] `app/(auth)/login/page.tsx` - Page login
-- [ ] `app/(auth)/register/page.tsx` - Page register
-- [ ] `app/(auth)/layout.tsx` - Layout centré pour auth
+- [x] `stores/auth-store.ts` - Zustand store (token, user, isAuthenticated) ✅
+- [x] `hooks/use-auth.ts` - Hook login/logout/register ✅
+- [x] `types/` - Types TypeScript (user.ts, meeting.ts, group.ts) ✅
+- [x] `app/(auth)/login/page.tsx` - Page login ✅
+- [x] `app/(auth)/register/page.tsx` - Page register ✅
+- [x] `app/(auth)/layout.tsx` - Layout centré pour auth ✅
 - [ ] Middleware ou guard pour routes protégées
 
 ### 5. Dashboard & Smart Cards (1 jour)
@@ -94,16 +91,16 @@ Le projet a une base fonctionnelle :
 - [ ] `app/(dashboard)/page.tsx` - Dashboard avec liste des cards
 - [x] Polling pour status updates ✅ Existe (`hooks/use-polling.ts`)
 
-### 6. Upload - Amélioration (0.5 jour)
+### 6. Upload - Amélioration ~~(0.5 jour)~~ → FAIT
 
-- [x] Drag & drop zone ✅ Existe (`components/VideoUpload.tsx`)
-- [ ] **ADAPTER** : Ajouter `GroupSelector.tsx` - Multi-select groupes
-- [x] Barre de progression ✅ Existe
-- [x] Hook upload avec progress ✅ Existe
-- [ ] **ADAPTER** : Envoyer `group_ids` avec l'upload
-- [ ] `app/(dashboard)/upload/page.tsx` - Page upload dédiée (ou garder sur dashboard)
-- [x] Validation fichier type ✅ Existe
-- [ ] Validation taille max 2GB
+- [x] Drag & drop zone ✅ (page V0 intégrée)
+- [x] GroupSelector multi-select groupes ✅ (intégré dans page upload)
+- [x] Barre de progression ✅
+- [x] Hook upload avec progress ✅
+- [x] Envoyer `group_ids` avec l'upload ✅
+- [x] `app/(dashboard)/upload/page.tsx` - Page upload dédiée ✅ (générée par V0)
+- [x] Validation fichier type ✅
+- [x] Validation taille max 2GB ✅
 
 ### 7. Détail Meeting (1 jour)
 

@@ -1,3 +1,8 @@
+/**
+ * @file button - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/button
+ * Auto-generated. Avoid direct modifications.
+ */
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";

@@ -1,3 +1,8 @@
+/**
+ * @file progress - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/progress
+ * Auto-generated. Avoid direct modifications.
+ */
 "use client";
 
 import * as React from "react";

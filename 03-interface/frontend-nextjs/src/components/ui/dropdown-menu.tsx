@@ -1,3 +1,8 @@
+/**
+ * @file dropdown-menu - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/dropdown-menu
+ * Auto-generated. Avoid direct modifications.
+ */
 "use client";
 
 import * as React from "react";

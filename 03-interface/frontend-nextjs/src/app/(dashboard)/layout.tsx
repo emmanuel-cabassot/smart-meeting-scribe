@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
-import { MainLayout } from "@/components/layout/MainLayout";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { TopHeader } from "@/components/layout/TopHeader";
 import { LoadingOverlay } from "@/components/common/LoadingSpinner";
 
 export default function DashboardLayout({
@@ -31,5 +33,15 @@ export default function DashboardLayout({
         return <LoadingOverlay />;
     }
 
-    return <MainLayout>{children}</MainLayout>;
+    return (
+        <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+                <TopHeader />
+                <main className="flex-1 p-6">
+                    {children}
+                </main>
+            </SidebarInset>
+        </SidebarProvider>
+    );
 }

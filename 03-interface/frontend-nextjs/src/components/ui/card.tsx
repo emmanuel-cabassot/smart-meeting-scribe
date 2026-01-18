@@ -1,3 +1,8 @@
+/**
+ * @file card - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/card
+ * Auto-generated. Avoid direct modifications.
+ */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 

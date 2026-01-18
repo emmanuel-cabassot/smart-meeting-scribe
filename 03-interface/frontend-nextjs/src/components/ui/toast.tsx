@@ -1,3 +1,8 @@
+/**
+ * @file toast - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/toast
+ * Auto-generated. Avoid direct modifications.
+ */
 "use client";
 
 import * as React from "react";

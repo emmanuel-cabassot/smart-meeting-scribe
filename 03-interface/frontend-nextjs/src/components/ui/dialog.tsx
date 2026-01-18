@@ -1,3 +1,8 @@
+/**
+ * @file dialog - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/dialog
+ * Auto-generated. Avoid direct modifications.
+ */
 "use client";
 
 import * as React from "react";

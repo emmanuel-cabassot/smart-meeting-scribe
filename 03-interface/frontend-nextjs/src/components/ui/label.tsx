@@ -1,3 +1,8 @@
+/**
+ * @file label - Shadcn/ui Component
+ * @see https://ui.shadcn.com/docs/components/label
+ * Auto-generated. Avoid direct modifications.
+ */
 "use client";
 
 import * as React from "react";

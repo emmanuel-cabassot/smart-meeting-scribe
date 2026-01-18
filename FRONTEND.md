@@ -1,6 +1,9 @@
 # 🎨 Frontend Documentation - Smart Meeting Scribe
 
-> **Point d'entrée pour comprendre le frontend.** Ce fichier explique l'organisation de la documentation.
+> **Smart Meeting Scribe** transcrit automatiquement des fichiers audio/vidéo de réunions avec identification des locuteurs (Whisper + Pyannote).
+> Ce fichier est le **point d'entrée** pour comprendre et travailler sur le frontend.
+
+**Branche active** : `front` | **Pour lancer** : `./manage.sh front-dev`
 
 ---
 
@@ -54,7 +57,7 @@ Le frontend existe déjà dans : **`03-interface/frontend-nextjs/`**
 
 | Phase | Status | Fichier |
 |-------|--------|---------|
-| **Phase 1 - MVP Core** | 🔄 En cours (~30% fait) | `FRONTEND_PHASE1_MVP.md` |
+| **Phase 1 - MVP Core** | 🔄 En cours (~50% fait) | `FRONTEND_PHASE1_MVP.md` |
 | Phase 2 - Enhanced UX | ⏳ À venir | - |
 | Phase 3 - RAG Chat | ⏳ À venir | - |
 
@@ -64,9 +67,21 @@ Le frontend existe déjà dans : **`03-interface/frontend-nextjs/`**
 
 - **Code Frontend** : `03-interface/frontend-nextjs/`
 - **Backend API** : `03-interface/backend/`
+- **📡 Routes API** : [`03-interface/backend/README.md`](./03-interface/backend/README.md) ← Documentation complète des endpoints
 - **Architecture globale** : `ARCHITECTURE.md`
 - **Contexte projet** : `CONTEXT.md`
 
 ---
 
+## 🌐 URLs de développement
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:3000 | Interface Next.js |
+| Backend API | http://localhost:5000 | FastAPI |
+| API Docs | http://localhost:5000/docs | Swagger UI |
+
+---
+## PARLE EN FRANCAIS
+## Quand tu fais une nouvelle page demande moi de te donner un exemple ave v0.app
 *Dernière mise à jour : 17 Janvier 2026*

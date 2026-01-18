@@ -92,6 +92,19 @@ case "$1" in
     echo -e "${GREEN}✅ Nettoyage terminé.${NC}"
     ;;
     
+  front-dev)
+    echo -e "${BLUE}🎨 Lancement du frontend en mode dev (Docker + hot-reload)...${NC}"
+    echo -e "${YELLOW}→ http://localhost:3000${NC}"
+    echo -e "${YELLOW}→ Ctrl+C pour arrêter${NC}"
+    echo ""
+    # Arrête le frontend prod s'il tourne
+    docker compose -f "$PROJECT_ROOT/03-interface/docker-compose.yml" stop frontend 2>/dev/null
+    # Lance le frontend dev avec volumes
+    docker compose -f "$PROJECT_ROOT/03-interface/docker-compose.yml" \
+                   -f "$PROJECT_ROOT/03-interface/docker-compose.dev.yml" \
+                   up --build frontend
+    ;;
+
   *)
     echo -e "${BLUE}Smart Meeting Scribe - Commandes disponibles:${NC}"
     echo ""
@@ -102,9 +115,11 @@ case "$1" in
     echo "  ./manage.sh status      - État des services Docker"
     echo ""
     echo -e "${YELLOW}Commandes de développement:${NC}"
+    echo "  ./manage.sh front-dev   - Frontend dev avec hot-reload (hors Docker)"
     echo "  ./manage.sh reset-db    - Réinitialiser la base de données"
-    echo "  ./manage.sh rebuild     - Reconstruire l'image backend"
+    echo "  ./manage.sh rebuild [s] - Reconstruire une image (défaut: backend)"
     echo "  ./manage.sh clean       - Nettoyage complet (⚠️  destructif)"
     echo ""
     ;;
 esac
+

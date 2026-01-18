@@ -696,18 +696,35 @@ const useMeetingStatus = (meetingId: number) => {
 
 ## 🔌 Contrat API
 
-### Authentication
+> [!IMPORTANT]
+> **Source de vérité** : Voir [`03-interface/backend/README.md`](./03-interface/backend/README.md) pour la documentation API complète.
+> Les routes ci-dessous sont un résumé pour le frontend.
+
+### Authentication (`/api/v1/auth`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `POST` | `/register` | ❌ | Créer un compte |
+| `POST` | `/login` | ❌ | Obtenir un JWT (form-data: username, password) |
+
 ```typescript
+// Login
 POST /api/v1/auth/login
-Body: { username: string, password: string }
+Body (form-data): { username: string, password: string }
 Response: { access_token: string, token_type: "bearer" }
 
+// Register
 POST /api/v1/auth/register
 Body: { email: string, password: string, full_name?: string }
 Response: UserOut
 ```
 
-### Users
+### Users (`/api/v1/users`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `GET` | `/me` | ✅ | Profil utilisateur avec ses groupes |
+
 ```typescript
 GET /api/v1/users/me
 Headers: Authorization: Bearer {token}
@@ -719,26 +736,46 @@ Response: {
 }
 ```
 
-### Upload
+### Process/Upload (`/api/v1/process`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `POST` | `/` | ✅ | Upload audio → créer Meeting → dispatch Worker |
+| `GET` | `/status/{task_id}` | ❌ | Polling du statut de transcription |
+
 ```typescript
 POST /api/v1/process/
 Headers: Authorization: Bearer {token}
 Body (multipart/form-data):
   - file: File (audio/video)
   - title?: string
-  - group_ids: string  // JSON array "[1, 2]" ou CSV "1,2"
+  - group_ids: string  // JSON array "[1, 2]"
 
-Response: MeetingOut {
-  id: number,
-  title: string,
-  status: "pending" | "processing" | "completed" | "failed",
-  groups: Array<GroupMinimal>,
-  created_at: string,
-  ...
+Response: {
+  status: string,
+  meeting_id: string,
+  task_id: string,
+  s3_path: string,
+  message: string
 }
+
+GET /api/v1/process/status/{task_id}
+Response: { status: string, progress?: number, result?: TranscriptionResult }
 ```
 
-### Meetings
+### Meetings (`/api/v1/meetings`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `GET` | `/` | ✅ | Liste meetings (visibles selon groupes) |
+| `GET` | `/?group_id=1` | ✅ | Filtre par groupe |
+| `GET` | `/?status=pending` | ✅ | Filtre par status |
+| `GET` | `/mine` | ✅ | Liste mes meetings uniquement |
+| `GET` | `/{id}` | ✅ | Détail d'un meeting |
+| `PATCH` | `/{id}` | ✅ Owner | Modifier un meeting (title, etc.) |
+| `DELETE` | `/{id}` | ✅ Owner | Supprimer un meeting |
+| `GET` | `/stats/count` | ✅ | Compteur de meetings |
+
 ```typescript
 GET /api/v1/meetings/
 Query: { group_id?: number, status?: string }
@@ -747,11 +784,24 @@ Response: Array<MeetingOut>
 GET /api/v1/meetings/{id}
 Response: MeetingOut
 
+PATCH /api/v1/meetings/{id}
+Body: { title?: string }
+Response: MeetingOut
+
 DELETE /api/v1/meetings/{id}
 Response: 204 No Content
 ```
 
-### Groups
+### Groups (`/api/v1/groups`)
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `GET` | `/` | ✅ | Liste tous les groupes |
+| `GET` | `/{id}` | ✅ | Détail d'un groupe |
+| `POST` | `/` | 🔐 Admin | Créer un groupe |
+| `PATCH` | `/{id}` | 🔐 Admin | Modifier un groupe |
+| `DELETE` | `/{id}` | 🔐 Admin | Supprimer un groupe |
+
 ```typescript
 GET /api/v1/groups/
 Response: Array<{

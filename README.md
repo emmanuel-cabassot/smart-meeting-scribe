@@ -1,14 +1,14 @@
-# Smart Meeting Scribe (V5.4)
+# Smart Meeting Scribe (V6.0)
 
-> ⚠️ **STABLE ALPHA**
+> ⚠️ **STABLE BETA**
 > Architecture multi-stacks distribuée avec stockage S3-Native (boto3).
-> *Version actuelle : v5.4.0*
+> *Version actuelle : v6.0.0*
 
 > 🤖 **IA - Application réunion** | *Gem personnalisé*
 
 ---
 
-> 🚀 **VERSION V5.4 - API Complète + Webhook Worker**
+> 🚀 **VERSION V6.0 - Modèle Groups Unifié**
 > Solution **Enterprise-Grade** d'analyse de réunions **100% On-Premise**.
 >
 > Stack : **Next.js 16** • **FastAPI** • **PostgreSQL 16** • **MinIO (S3)** • **Redis 7** • **Whisper** • **boto3**
@@ -19,7 +19,7 @@
 
 **Smart Meeting Scribe** sécurise et automatise la transcription de réunions grâce à une architecture robuste où chaque service est isolé.
 
-### Piliers de l'Architecture V5.4
+### Piliers de l'Architecture V6.0
 
 | Pilier | Description |
 |--------|-------------|
@@ -28,7 +28,7 @@
 | ⚡ **Clean Architecture** | Backend API structuré en couches (Endpoints ➔ Services ➔ Modèles) pour une maintenance facilitée. |
 | 🎮 **GPU Safety (VRAM)** | Stratégie Single Model Residency pour faire tourner Whisper Large-v3-Turbo et Pyannote sur 12GB de VRAM. |
 | 🎯 **Identity Bank** | Identification des locuteurs via WeSpeaker avec banque d'identités sur S3 (voix + visage future). |
-| 🏢 **Organisation Matricielle** | Système Services (vertical) & Projets (transversal) pour la visibilité des réunions en entreprise. |
+| 🏢 **Modèle Groups** | Système de groupes unifiés (Départements, Projets, Récurrents) pour la visibilité des réunions en entreprise. |
 
 ---
 
@@ -72,29 +72,30 @@ graph TD
 | **Frontend** | Next.js 16 (Standalone) | Interface utilisateur (Docker optimisé ~100MB). |
 | **API** | FastAPI + boto3 | Gateway. Auth, Upload stream vers S3, dispatch Redis. |
 | **Worker** | Taskiq + Python + CUDA | Pipeline IA : Diarisation, Identification, Transcription. |
-| **Database** | PostgreSQL 16 | Persistance des utilisateurs, meetings, services, projets. |
+| **Database** | PostgreSQL 16 | Persistance des utilisateurs, meetings, groups. |
 | **Object Storage** | MinIO | Stockage compatible S3 pour audio et résultats JSON. |
 | **Message Broker** | Redis 7 | File d'attente des tâches de transcription. |
 | **Vector DB** | Qdrant | Base vectorielle pour le futur RAG. |
 
 ---
 
-## 🏢 Organisation Matricielle
+## 🏢 Modèle de Groupes Unifié
 
-Le système utilise une **double appartenance** pour la gestion des droits d'accès aux réunions :
+Le système utilise des **Groupes** pour simplifier la gestion des droits d'accès aux réunions, inspiré d'Azure AD.
 
-| Type | Relation | Description |
-|------|----------|-------------|
-| **Service** | 1 User → 1 Service | Département hiérarchique (R&D, Sales, Marketing...) |
-| **Projet** | N Users ↔ N Projets | Mission transversale (Lancement V5, Audit Sécurité...) |
+### Types de Groupes
 
-### Algorithme de Visibilité
+| Type | Description | Exemples |
+|------|-------------|----------|
+| **Department** | Structure hiérarchique organisationnelle | R&D, Marketing, Direction, RH |
+| **Project** | Projets transversaux ou temporaires | Lancement V5, Audit Sécurité |
+| **Recurring** | Réunions récurrentes ou distribution lists | COMOP, Daily, Café' AGAM |
+
+### Règles de Visibilité
 
 Un utilisateur voit une réunion si :
-- ✅ **Condition A** : Il est dans le même Service que la réunion
-- ✅ **Condition B** : Il partage un Projet avec la réunion (sauf si confidentielle)
-
-> 📖 Détails complets : [03-interface/ORGANIZATION_LOGIC.md](03-interface/ORGANIZATION_LOGIC.md)
+- ✅ Il partage **au moins un groupe** avec la réunion
+- ✅ OU il est le **propriétaire** de la réunion
 
 ---
 
@@ -133,11 +134,10 @@ smart-meeting-scribe/
 │   ├── Dockerfile           # CUDA 12.4 + Python
 │   └── README.md
 ├── 03-interface/            # Application Web
-│   ├── ORGANIZATION_LOGIC.md # 📖 Logique matricielle
 │   ├── backend/             # API FastAPI
 │   │   ├── app/
-│   │   │   ├── api/v1/      # Routes (Auth, Process, Org)
-│   │   │   ├── models/      # User, Meeting, Service, Project
+│   │   │   ├── api/v1/      # Routes (Auth, Process, Groups)
+│   │   │   ├── models/      # User, Meeting, Group
 │   │   │   ├── services/    # Logique métier
 │   │   │   └── core/        # Config, Sécurité, Dépendances
 │   │   ├── alembic/         # Migrations SQL
@@ -173,17 +173,24 @@ Les signatures vocales sont stockées sur MinIO pour l'identification des locute
 - **NVIDIA Container Toolkit** (GPU)
 - Fichier `.env` configuré à la racine
 
-### Commande Unique
+### Commandes de Gestion
 
 ```bash
-./manage.sh
-```
+# Démarrer tous les services
+./manage.sh start
 
-Ce script :
-1. Nettoie les anciens containers
-2. Lance 01-core (infra)
-3. Lance 02-workers (GPU)
-4. Lance 03-interface (API + Frontend)
+# Arrêter tous les services
+./manage.sh stop
+
+# Voir les logs
+./manage.sh logs [service]
+
+# Réinitialiser la base de données (⚠️ DESTRUCTIF)
+./manage.sh reset-db
+
+# Reconstruire un service
+./manage.sh rebuild [service]
+```
 
 ### Accès
 
@@ -212,7 +219,7 @@ Ce script :
 
 | Volume Local | Description |
 |--------------|-------------|
-| `postgres_data` | Tables SQL (Users, Meetings, Services, Projects). |
+| `postgres_data` | Tables SQL (Users, Meetings, Groups). |
 | `minio_data` | Stockage S3. |
 | `huggingface_cache` | Modèles IA (Whisper, Pyannote, WeSpeaker). |
 | `qdrant_storage` | Index vectoriels (RAG futur). |
@@ -238,11 +245,12 @@ Système conçu pour **RTX 4070 Ti (12GB)** :
 - [x] Frontend Next.js 16 (Standalone Docker)
 - [x] Identity Bank sur S3 (voix)
 - [x] Tasks Worker modulaires (audio/video)
-- [x] **Organisation matricielle (Services & Projets)**
+- [x] **Modèle Groups Unifié (Department, Project, Recurring)**
 - [x] **Migrations Alembic + Seed automatique**
-- [x] **Endpoint /users/me avec contexte**
-- [x] **Filtres sur /meetings (service, projet, status)**
+- [x] **Endpoint /users/me avec groupes**
+- [x] **Filtres sur /meetings (group, status)**
 - [x] **Webhook Worker → API pour sync status**
+- [x] **Script manage.sh pour gestion simplifiée**
 - [ ] Frontend dynamique (Next.js)
 - [ ] Dashboard utilisateur sécurisé
 - [ ] Reconnaissance faciale (Identity Bank)

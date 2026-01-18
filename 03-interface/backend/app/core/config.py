@@ -11,6 +11,7 @@ class Settings:
     MINIO_ACCESS_KEY: str = os.getenv("MINIO_ROOT_USER", "admin")
     MINIO_SECRET_KEY: str = os.getenv("MINIO_ROOT_PASSWORD", "minio_admin_password")
     MINIO_BUCKET_AUDIO: str = "uploads"
+    MINIO_BUCKET_RESULTS: str = "processed"
     STORAGE_PROTOCOL: str = "s3"
 
     # --- Postgres (DB) ---

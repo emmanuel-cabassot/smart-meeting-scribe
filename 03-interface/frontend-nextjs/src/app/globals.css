@@ -10,7 +10,8 @@
   --bg-primary: #0A0A0B;
   --bg-secondary: #141416;
   --bg-tertiary: #1C1C1F;
-  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-glass: rgba(255, 255, 255, 0.03);
+  --bg-hover: rgba(255, 255, 255, 0.05);
 
   /* Accents */
   --accent-primary: #8B5CF6;
@@ -23,10 +24,12 @@
   --text-primary: #FAFAFA;
   --text-secondary: #A1A1AA;
   --text-tertiary: #71717A;
+  --text-muted: rgba(250, 250, 250, 0.5);
 
   /* Borders */
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-bright: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.15);
 
   /* Status Colors */
   --status-pending: #F59E0B;
@@ -34,9 +37,15 @@
   --status-completed: #10B981;
   --status-failed: #EF4444;
 
+  /* Group Type Colors */
+  --group-department: #3B82F6;
+  --group-project: #10B981;
+  --group-recurring: #F59E0B;
+
   /* Shadows */
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25);
-  --shadow-glow: 0 0 24px rgba(139, 92, 246, 0.15);
+  --shadow-glow: 0 0 30px rgba(139, 92, 246, 0.1);
+  --shadow-glow-strong: 0 0 24px rgba(139, 92, 246, 0.15);
 
   /* Radius */
   --radius-sm: 6px;
@@ -61,6 +70,8 @@
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-tertiary: var(--bg-tertiary);
+  --color-bg-glass: var(--bg-glass);
+  --color-bg-hover: var(--bg-hover);
   --color-accent-primary: var(--accent-primary);
   --color-accent-secondary: var(--accent-secondary);
   --color-accent-success: var(--accent-success);
@@ -69,6 +80,23 @@
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
+  --color-text-muted: var(--text-muted);
+
+  /* Border colors */
+  --color-border-subtle: var(--border-subtle);
+  --color-border-bright: var(--border-bright);
+  --color-border-hover: var(--border-hover);
+
+  /* Status colors */
+  --color-status-pending: var(--status-pending);
+  --color-status-processing: var(--status-processing);
+  --color-status-completed: var(--status-completed);
+  --color-status-failed: var(--status-failed);
+
+  /* Group type colors */
+  --color-group-department: var(--group-department);
+  --color-group-project: var(--group-project);
+  --color-group-recurring: var(--group-recurring);
 
   /* Radius */
   --radius-sm: 6px;

@@ -1,157 +1,102 @@
-# Prompt v0.app - Smart Meeting Scribe
+# 🎯 Prompts v0.app - Smart Meeting Scribe
 
-## Pour générer la Smart Card
+> Prompts optimisés pour générer des composants avec v0.app
 
-```
-Create a dark-themed "Smart Card" component for a meeting dashboard, inspired by Linear.app and YouTube Studio.
+---
 
-VISUAL STYLE:
-- Ultra-dark background (#0A0A0B)
-- Glassmorphism effect (backdrop-blur, semi-transparent white borders)
-- Violet/Indigo accent colors (#8B5CF6)
-- Subtle shadows and hover glow effects
-
-CARD STRUCTURE:
-1. Header (flex row):
-   - Left: Meeting title (large, white text) "Point Hebdo R&D"
-   - Right: Relative time "2h ago" (gray text)
-
-2. Badges row:
-   - Group badges: Purple pill "[V5 Launch]", Blue pill "[Tech]"
-   - Status badge: Green dot + "Completed"
-
-3. AI Insights section (glassmorphism box with violet tint):
-   - Icon: ✨ "AI Summary"
-   - 3 bullet points:
-     * "✅ Architecture S3 validée"
-     * "⚠️ Bloqueur sur le Dockerfile GPU"
-     * "💡 Action: Emmanuel doit patcher avant midi"
-
-4. Audio Player (embedded):
-   - Play button icon
-   - Waveform visualization (blue/red gradient)
-   - Time display "45:23 / 52:10"
-   - Seek bar
-
-5. Actions footer:
-   - Button: "📄 Read Transcript" (secondary style)
-   - Button: "💬 Chat" (ghost style)
-   - Icon button: "⋯ More"
-
-INTERACTIONS:
-- Hover: Subtle glow border (violet)
-- Card is clickable to open detail view
-- All buttons have hover states
-
-TECH:
-- Next.js 16 / React
-- TailwindCSS
-- TypeScript
-- Lucide icons
-
-Make it look premium, data-rich, and professional.
-```
-
-## Pour générer le Dashboard complet
+## 1. Smart Card Meeting
 
 ```
-Create a dark-themed dashboard layout for "Smart Meeting Scribe", a meeting transcription app.
+Create a "SmartCard" React component for a meeting transcription app using shadcn/ui.
 
-LAYOUT (3 zones):
+## Context
+This is for a dark-themed meeting transcription app (style: Linear.app / YouTube Studio).
 
-1. LEFT SIDEBAR (fixed, 240px):
-   - Dark background (#141416)
-   - Logo "Smart Scribe v6.0" at top
-   - Navigation sections:
-     * MY WORKSPACE (My Feed - active/highlighted, Uploads, Favorites)
-     * GROUPS with expandable categories:
-       - Departments (R&D, Marketing, Direction)
-       - Projects (V5 Launch, Audit)
-       - Recurring (COMOP, Daily)
-   - Bottom: User profile "Emmanuel C." with settings icon
+## Data Structure (TypeScript)
+The card receives a Meeting object:
 
-2. TOP HEADER (sticky):
-   - Breadcrumb: "Home > My Feed"
-   - Center: Search bar with ⌘K hint (glassmorphism)
-   - Right: "✨ Ask AI" button + large violet "UPLOAD MEETING" CTA
+type MeetingStatus = "pending" | "processing" | "completed" | "failed";
 
-3. MAIN CONTENT:
-   - Title: "Recent Insights"
-   - Filter pills: "All", "Pending", "Completed"
-   - Scrollable feed of 3-4 meeting cards (use the Smart Card from previous prompt)
+interface Meeting {
+  id: number;
+  title: string;
+  status: MeetingStatus;
+  created_at: string; // ISO date
+  transcription_result: {
+    segments: Array<{ speaker: string; start: number; end: number; text: string }>;
+    duration?: number; // in seconds
+  } | null;
+  groups: Array<{ id: number; name: string; type: "department" | "project" | "recurring" }>;
+}
 
-VISUAL STYLE:
-- Ultra-dark theme (#0A0A0B background)
-- Glassmorphism throughout
-- Violet/Indigo accents (#8B5CF6)
-- Subtle borders (rgba(255,255,255,0.08))
-- Smooth transitions and hover states
+## Card Anatomy
+1. **Header**: Title + relative date ("2 hours ago")
+2. **Badges row**: Group badges (colored by type) + Status badge
+3. **AI Summary section** (only if status = completed): Glassmorphism encart with 2-3 bullet points preview
+4. **Audio player** (only if status = completed): Simple HTML5 audio with custom styled progress bar
+5. **Actions row**: 
+   - "Read Transcript" button → navigates to /meetings/{id}
+   - "Chat" button (disabled for MVP)
+   - "..." dropdown menu (Edit title, Download, Delete)
 
-TECH:
-- Next.js 16 App Router
-- TailwindCSS
-- TypeScript
-- Framer Motion for animations
+## Status States
+- `pending`: Show spinner + "Transcribing..."
+- `processing`: Show progress bar with percentage
+- `completed`: Show AI summary + audio player
+- `failed`: Show red error badge + "Retry" button
 
-Make it look like a premium SaaS dashboard (Linear, Notion style).
-```
+## Styling Requirements
+- Dark theme (bg: #141416, text: #FAFAFA)
+- Glassmorphism effect for AI summary (rgba(255,255,255,0.03), backdrop-blur)
+- Accent color: #8B5CF6 (violet)
+- Border: rgba(255,255,255,0.08)
+- Hover: subtle glow effect
 
-## Pour générer la page Upload
+## shadcn/ui Components to use
+- Card, CardHeader, CardContent, CardFooter
+- Badge (for status and groups)
+- Button (for actions)
+- DropdownMenu (for [...] menu)
+- Progress (for processing state)
+- Skeleton (for loading)
 
-```
-Create a dark-themed upload page for audio/video files with group selection.
+## Props
 
-LAYOUT:
-- Centered card (max-width 600px) on dark background
-- Title: "Upload New Meeting"
+interface SmartCardProps {
+  meeting: Meeting;
+  onEdit?: (id: number) => void;
+  onDelete?: (id: number) => void;
+}
 
-COMPONENTS:
-1. File Dropzone:
-   - Large dashed border area (glassmorphism)
-   - Icon: 📤
-   - Text: "Drag & drop audio/video here or click to browse"
-   - Supported formats: MP3, WAV, MP4, M4A (small gray text)
-   - Max size: 2GB
-
-2. Title Input (optional):
-   - Label: "📝 Title (optional)"
-   - Text input with dark styling
-
-3. Group Selector (required):
-   - Label: "🏢 Select Groups (required)"
-   - Multi-checkbox list:
-     * R&D (checked)
-     * V5 Launch (checked)
-     * Marketing (unchecked)
-     * COMOP (unchecked)
-   - Custom checkboxes with violet accent
-
-4. Footer Actions:
-   - Left: "Cancel" (ghost button)
-   - Right: "Upload & Process →" (large violet CTA, disabled if no file)
-
-STATES:
-- Empty state (initial)
-- File dragging over (highlight border)
-- File selected (show filename + size)
-- Uploading (progress bar)
-
-VISUAL STYLE:
-- Dark theme (#0A0A0B)
-- Glassmorphism card
-- Violet accents
-- Smooth animations
-
-TECH:
-- React dropzone
-- TailwindCSS
-- TypeScript
+## Additional Notes
+- Use lucide-react icons (Play, Pause, MoreHorizontal, FileText, MessageSquare, Trash2, Pencil)
+- formatRelativeDate() for "2 hours ago" display
+- formatDuration() for audio duration "45:23"
+- The card should be responsive and full-width on mobile
 ```
 
 ---
 
-**Instructions d'utilisation :**
-1. Copie l'un des prompts ci-dessus
-2. Colle-le dans v0.app
+## 2. Dashboard Page (à venir)
+
+*Prompt à ajouter après la Smart Card*
+
+---
+
+## 3. Meeting Detail Page (à venir)
+
+*Prompt à ajouter après le Dashboard*
+
+---
+
+## 📝 Instructions d'utilisation
+
+1. Copie le prompt de la section voulue
+2. Colle-le dans [v0.app](https://v0.dev)
 3. Affine si nécessaire selon le résultat
-4. Exporte le code généré dans ton projet Next.js
+4. Exporte le code généré
+5. Adapte les imports shadcn/ui aux chemins locaux (`@/components/ui/...`)
+
+---
+
+*Dernière mise à jour : 18 Janvier 2026*

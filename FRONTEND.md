@@ -83,5 +83,5 @@ Le frontend existe déjà dans : **`03-interface/frontend-nextjs/`**
 
 ---
 ## PARLE EN FRANCAIS
-
+## Quand tu fais une nouvelle page demande moi de te donner un exemple ave v0.app
 *Dernière mise à jour : 17 Janvier 2026*

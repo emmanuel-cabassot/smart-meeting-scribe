@@ -83,9 +83,75 @@ interface SmartCardProps {
 
 ---
 
-## 3. Meeting Detail Page (à venir)
+## 3. Meeting Detail Page
 
-*Prompt à ajouter après le Dashboard*
+```
+Create a "MeetingDetail" page component for a meeting transcription app using shadcn/ui.
+
+## Context
+This page displays the full transcript of a meeting, with tools to search, filter, and export the content.
+Style: Dark theme, professional, clean (Linear.app style).
+
+## Data Structure (TypeScript)
+const transcript = {
+  id: 1,
+  title: "Q1 Roadmap Review",
+  date: "2023-10-15T10:00:00Z",
+  duration: 3600, // seconds
+  segments: [
+    { speaker: "Alice", start: 0, end: 15, text: "Welcome everyone..." },
+    { speaker: "Alice", start: 15, end: 30, text: "Let's review the goals." },
+    { speaker: "Bob", start: 30, end: 45, text: "Thanks Alice." },
+    // ...
+  ]
+};
+
+## Core Features & UI Layout
+
+1. **Toolbar (Sticky Header)**
+   - **Left**: "Back" button (ghost variant).
+   - **Center**: Search input ("Search transcript...") - filters lines in real-time.
+   - **Right**:
+     - **View Toggle**: A customized ToggleGroup or Tabs to switch between "Detailed" (time-based) and "Grouped" (speaker-based) views.
+     - **Actions**:
+       - "Copy" button (Icon: Copy)
+       - "Download" button (Icon: Download) - downloads as .txt
+       - "Speaker Stats" button (Icon: BarChart) - opens a popover or dialog with speaker talk time percentages.
+
+2. **Main Content Area**
+   - **Meeting Header**: Title, Date, Duration badge, Status badge.
+   - **Transcript View**:
+     - **Detailed View**: Shows every segment individually with precise timestamps. Best for editing or alignment.
+     - **Grouped View (DEFAULT)**: Merges consecutive segments from the same speaker.
+       - Shows Speaker Avatar/Badge on the left.
+       - Shows Start-End range (e.g., "00:00 - 00:45").
+       - Concatenates text into a readable paragraph.
+
+## Interaction Details
+- **Search**: Highlighting matched terms would be a bonus.
+- **Copy**: Should copy the visible/filtered text.
+- **Responsive**: Toolbar needs to adapt on mobile (icon buttons instead of text).
+
+## shadcn/ui Components to use
+- `Card` (for the main container)
+- `Button` (ghost/outline/default)
+- `Input` (with Search icon prefix)
+- `Badge` (for speakers and status)
+- `Tabs` or `ToggleGroup` (for view switching)
+- `ScrollArea` (for the list)
+- `Separator`
+- `Tooltip` (for action buttons)
+
+## Icons (lucide-react)
+- ArrowLeft, Search, Copy, Download, FileText, User, Clock, BarChart3, ChevronDown
+
+## Styling
+- Dark mode default.
+- Typography: Inter or similar sans-serif.
+- Subtle borders (`border-white/10`).
+- Text colors: `text-slate-200` for primary, `text-slate-400` for timestamps/secondary.
+
+```
 
 ---
 

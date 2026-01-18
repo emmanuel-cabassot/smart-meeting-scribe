@@ -113,6 +113,10 @@
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-subtle);
   --sidebar-ring: var(--accent-primary);
+
+  /* Popover */
+  --color-popover: var(--bg-tertiary);
+  --color-popover-foreground: var(--text-primary);
 }
 
 /* Base Styles */

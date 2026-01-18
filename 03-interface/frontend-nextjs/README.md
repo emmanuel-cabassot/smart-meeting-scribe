@@ -23,18 +23,25 @@ Le projet suit l'architecture **Next.js App Router** avec une séparation claire
 src/
 ├── app/                    # Routing et Pages (App Router)
 │   ├── (auth)/            # Routes d'authentification (login, register)
-│   ├── (dashboard)/       # Routes protégées (upload, listes)
+│   ├── (dashboard)/       # Routes protégées (upload, meetings)
 │   ├── layout.tsx         # Layout racine (Providers, Font)
 │   └── globals.css        # Styles globaux (Tailwind @theme)
 │
 ├── components/            # Composants React
-│   ├── ui/                # Composants atomiques réutilisables (Button, Input...)
+│   ├── ui/                # Composants atomiques réutilisables (Button, Input, Badge...)
 │   ├── layout/            # Composants de structure (Header, Sidebar)
+│   ├── meeting/           # Composants pour la page de détail meeting
+│   │   ├── MeetingDetail.tsx      # Conteneur principal
+│   │   ├── MeetingHeader.tsx      # En-tête avec titre, date, légende speakers
+│   │   ├── MeetingToolbar.tsx     # Barre d'outils (recherche, vues, export)
+│   │   ├── TranscriptView.tsx     # Affichage des segments (groupé/détaillé)
+│   │   └── transcript-utils.ts    # Utilitaires (couleurs, formatage, recherche)
 │   ├── features/          # Composants métier complexes
 │   └── common/            # Composants utilitaires (Spinner, etc.)
 │
 ├── hooks/                 # Custom Hooks
 │   ├── use-auth.ts        # Hook d'authentification et gestion session
+│   ├── use-transcript.ts  # Récupération des données de transcription
 │   ├── use-upload.ts      # Logique d'upload
 │   └── use-polling.ts     # Polling pour le statut des transcriptions
 │
@@ -43,7 +50,7 @@ src/
 │   └── utils.ts           # Fonctions helpers (cn, formatters)
 │
 ├── stores/               # État Global (Zustand)
-│   └── auth-store.ts      # Store d'auth (token, user user data, persistance)
+│   └── auth-store.ts      # Store d'auth (token, user data, persistance)
 │
 └── types/                # Définitions TypeScript
     ├── user.ts            # Interfaces User, Login, Register
@@ -66,6 +73,14 @@ src/
 ### Dashboard
 - Liste des meetings avec statut en temps réel (polling).
 - Vue détaillée des transcriptions interactives (diarisation).
+
+### Page Détail Meeting (`/meetings/[id]`)
+- **Vue Groupée par Speaker** : Fusionne les segments consécutifs d'un même intervenant.
+- **Vue Détaillée** : Affiche chaque segment individuellement avec timestamps.
+- **Recherche** : Filtrage en temps réel, insensible aux accents et à la casse.
+- **Statistiques Speakers** : Popover affichant le temps de parole par intervenant.
+- **Export** : Copier dans le presse-papier ou télécharger en `.txt`.
+- **Couleurs distinctes** : Attribution déterministe de couleurs pour chaque speaker.
 
 ## 🚀 Démarrage
 
@@ -94,4 +109,16 @@ L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
 ```bash
 npm run build
 npm start
+```
+
+## 🐳 Docker
+
+Le frontend peut être démarré via Docker Compose depuis la racine du projet :
+
+```bash
+# Démarrage de tous les services
+docker compose up -d
+
+# Rebuild du frontend uniquement
+./manage.sh rebuild frontend
 ```

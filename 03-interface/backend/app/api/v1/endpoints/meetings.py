@@ -1,7 +1,7 @@
 """
 Endpoints CRUD pour les Meetings avec visibilité par groupes.
 """
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +17,7 @@ from app.services.meeting import (
     update_meeting, 
     delete_meeting
 )
+from app.services.s3_service import get_transcript_from_s3
 
 router = APIRouter()
 
@@ -193,4 +194,70 @@ async def get_meetings_count(
     return {
         "total": len(meetings),
         "owned": len([m for m in meetings if m.owner_id == current_user.id])
+    }
+
+
+@router.get("/{meeting_id}/transcript")
+async def get_meeting_transcript(
+    meeting_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Récupère la transcription complète d'un meeting depuis S3.
+    
+    Retourne les segments avec speaker, timestamp et texte.
+    Le meeting doit être en status "completed" pour avoir une transcription disponible.
+    """
+    meeting = await get_meeting(db, meeting_id)
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting introuvable")
+    
+    # Charge l'utilisateur avec ses groupes
+    user_query = await db.execute(
+        select(User)
+        .options(selectinload(User.groups))
+        .where(User.id == current_user.id)
+    )
+    user = user_query.scalar_one()
+    
+    # Vérifie la visibilité
+    if not can_user_access_meeting(user, meeting) and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce meeting")
+    
+    # Vérifie que le meeting est terminé
+    if meeting.status != "completed":
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Transcription non disponible. Status actuel: {meeting.status}"
+        )
+    
+    # Vérifie qu'il y a un chemin S3
+    if not meeting.transcription_text:
+        raise HTTPException(
+            status_code=404, 
+            detail="Aucune transcription trouvée pour ce meeting"
+        )
+    
+    # Récupère la transcription depuis S3
+    try:
+        segments = get_transcript_from_s3(meeting.transcription_text)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Erreur de chemin S3: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération S3: {str(e)}")
+    
+    if segments is None:
+        raise HTTPException(
+            status_code=404, 
+            detail="Fichier de transcription non trouvé dans S3"
+        )
+    
+    return {
+        "meeting_id": meeting.id,
+        "title": meeting.title,
+        "status": meeting.status,
+        "created_at": meeting.created_at.isoformat() if meeting.created_at else None,
+        "segments": segments
     }

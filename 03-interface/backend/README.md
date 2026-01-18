@@ -98,6 +98,7 @@ backend/
 | `GET` | `/?status=pending` | ✅ | Filtre par status |
 | `GET` | `/mine` | ✅ | Liste mes meetings uniquement |
 | `GET` | `/{id}` | ✅ | Détail d'un meeting |
+| `GET` | `/{id}/transcript` | ✅ | **Transcription complète** (segments depuis S3) |
 | `PATCH` | `/{id}` | ✅ Owner | Modifier un meeting |
 | `DELETE` | `/{id}` | ✅ Owner | Supprimer un meeting |
 | `GET` | `/stats/count` | ✅ | Compteur de meetings |
@@ -152,7 +153,38 @@ curl -X POST http://localhost:5000/api/v1/process/ \
 # 3. Lister les meetings
 curl "http://localhost:5000/api/v1/meetings/?status=completed" \
   -H "Authorization: Bearer $TOKEN"
+
+# 4. Récupérer la transcription complète
+curl "http://localhost:5000/api/v1/meetings/1/transcript" \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+### Réponse `/meetings/{id}/transcript`
+
+```json
+{
+  "meeting_id": 1,
+  "title": "Docker et CUDA",
+  "status": "completed",
+  "created_at": "2026-01-17T23:56:11.666692",
+  "segments": [
+    {
+      "start": 0.00,
+      "end": 5.32,
+      "text": "Bonjour, on va parler de l'architecture Docker...",
+      "speaker": "femme"
+    },
+    {
+      "start": 5.50,
+      "end": 10.24,
+      "text": "Oui, notamment la partie GPU avec nvidia-docker.",
+      "speaker": "homme"
+    }
+  ]
+}
+```
+
+> 📝 **Note** : Le meeting doit être en status `completed` pour que la transcription soit disponible. Les données sont lues depuis S3 (bucket `processed`).
 
 ## �️ Gestion (Manage Script)
 
